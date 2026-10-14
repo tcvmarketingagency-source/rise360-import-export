@@ -1,0 +1,285 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAITRI RESIDENCY — DESIGN TOKENS
+   Warm cinematic food studio: deep charcoal + warm black, ivory surfaces,
+   controlled amber / turmeric / chili / herb accents.
+   All values live here so the whole experience can be re-skinned centrally.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* Surfaces — deep warm black family */
+  --color-ink: #0a0706;
+  --color-char: #121010;
+  --color-soot: #1a1614;
+  --color-ember: #241d18;
+  --color-smoke: #33291f;
+
+  /* Light surfaces */
+  --color-ivory: #f6f1e7;
+  --color-bone: #e6dccb;
+  --color-linen: #cfc3ae;
+  --color-ash: #9c9184;
+  --color-dust: #6f6558;
+
+  /* Accents — ember light, spice, herb */
+  --color-amber: #dda04a;
+  --color-amber-deep: #a96b1f;
+  --color-turmeric: #e8b44a;
+  --color-chili: #bb3a2c;
+  --color-herb: #46614c;
+  --color-clay: #b9846a;
+
+  /* Typography */
+  --font-display: var(--font-fraunces), "Iowan Old Style", Georgia, serif;
+  --font-sans: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* Motion tokens — mirrored in src/lib/motion/tokens.ts for GSAP/Framer */
+  --ease-cinematic: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.33, 0.85, 0.16, 1);
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.24, 1);
+
+  /* Fluid type scale (clamp-based, no layout shift) */
+  --text-micro: 0.6875rem;
+  --text-display-sm: clamp(2rem, 6.2vw, 3rem);
+  --text-display: clamp(2.6rem, 9vw, 6.2rem);
+  --text-display-xl: clamp(3rem, 13vw, 10.5rem);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --header-h: 4.5rem;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Lenis drives scroll when active; this keeps anchor jumps sane without JS. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html.lenis,
+  html.lenis body {
+    height: auto;
+  }
+
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+
+  .lenis.lenis-stopped {
+    overflow: hidden;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-ivory);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-amber) 70%, transparent);
+    color: var(--color-ink);
+  }
+
+  /* Visible, high-contrast keyboard focus everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Numeric alignment for prices, quantities, totals */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Custom utilities ─────────────────────────────────────────────────────── */
+
+@utility shell {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 4.5vw, 4.5rem);
+  max-width: 96rem;
+}
+
+@utility micro {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+@utility hairline {
+  border: 1px solid color-mix(in oklab, var(--color-ivory) 12%, transparent);
+}
+
+@utility hairline-t {
+  border-top: 1px solid color-mix(in oklab, var(--color-ivory) 12%, transparent);
+}
+
+@utility hairline-b {
+  border-bottom: 1px solid color-mix(in oklab, var(--color-ivory) 12%, transparent);
+}
+
+@utility mask-fade-b {
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+}
+
+/* Film grain — CSS only, one small tiled SVG, never in WebGL. */
+@utility grain-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.42'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+@utility surface-card {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--color-ember) 62%, transparent),
+    color-mix(in oklab, var(--color-char) 88%, transparent)
+  );
+  border: 1px solid color-mix(in oklab, var(--color-ivory) 9%, transparent);
+}
+
+/* ── Motion: authored, restrained ─────────────────────────────────────────── */
+
+/*
+ * Deliberate decision: reveal targets are NOT hidden in CSS. GSAP's setup sets
+ * the initial state in the same tick it registers ScrollTrigger, so if JS or
+ * WebGL fails, every section still renders fully visible. Nothing is ever
+ * stranded at opacity 0.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  [data-reveal],
+  [data-reveal-child] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Intro gating ─────────────────────────────────────────────────────────── */
+/* Set by the inline script in the root layout before first paint. */
+html[data-intro="skip"] [data-intro-root] {
+  display: none !important;
+}
+
+/* Skip link — visible on focus only */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -100px;
+  z-index: 300;
+  background: var(--color-amber);
+  color: var(--color-ink);
+  padding: 0.75rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition: top 0.2s var(--ease-snap);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+@keyframes scrollHint {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(250%);
+    opacity: 0;
+  }
+}
+
+@keyframes steamDrift {
+  0% {
+    transform: translate3d(0, 12%, 0) scale(0.9);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate3d(0, -28%, 0) scale(1.25);
+    opacity: 0;
+  }
+}
+
+@keyframes emberPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Hide scrollbar chrome on inner scroll regions (cart drawer, category rail). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Thin dark scrollbars elsewhere */
+* {
+  scrollbar-color: color-mix(in oklab, var(--color-ivory) 22%, transparent) transparent;
+  scrollbar-width: thin;
+}
