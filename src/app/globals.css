@@ -44,6 +44,9 @@
   --text-micro: 0.6875rem;
   --text-display-sm: clamp(2rem, 6.2vw, 3rem);
   --text-display: clamp(2.6rem, 9vw, 6.2rem);
+  /* Hero headline: sized so its widest line always fits the text-safe column
+     beside the dish panel (verified at 1440/1024/786/390). */
+  --hero-display: clamp(2.15rem, 6vw, 4.4rem);
   --text-display-xl: clamp(3rem, 13vw, 10.5rem);
 }
 

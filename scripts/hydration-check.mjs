@@ -191,6 +191,24 @@ async function run(label, { preHydrationScript, mangleHtml, quiet = false }) {
     elapsed += 250;
   }
 
+  // React flushes its dev-only hydration diff asynchronously: a clean-room
+  // React 19 test (renderToStaticMarkup + hydrateRoot in jsdom, extra attribute
+  // injected pre-hydration) showed the console message arriving well after
+  // hydration had completed. Counting messages the instant React attaches can
+  // therefore report a mismatched page as clean. Wait for the console to go
+  // quiet instead, capped so a silent page still finishes quickly.
+  let lastCount = messages.length;
+  let quietFor = 0;
+  while (quietFor < 1500 && elapsed < 24000) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    elapsed += 200;
+    quietFor += 200;
+    if (messages.length !== lastCount) {
+      lastCount = messages.length;
+      quietFor = 0;
+    }
+  }
+
   const hydrated = isHydrated();
   const sticky = [...dom.window.document.documentElement.attributes].map((a) => a.name).sort();
 

@@ -170,3 +170,54 @@ the story section. Edit the numbers in `src/lib/content/site.ts` (`nav`) and the
 - Measure Core Web Vitals on the production deployment — **no performance score has been claimed**.
 - Add rate limiting backed by a shared store (the current limiter is in-memory per instance).
 - Decide the notification channel and add its secret; confirm the webhook is retried on failure.
+
+## 9. Hero art direction (single source of truth)
+
+The hero's composition, lighting, materials and motion budget live in
+`src/lib/three/hero-rig.ts`. Nothing in the hero hard-codes them:
+
+- `HERO_COMPOSITION` — panel box per canvas width (`topFrac`, `bottomFrac`,
+  `widthFrac`, `centerXFrac`), interpolated by `resolveCompositionPoint`.
+- `resolveHeroLayout(width, height)` — the panel box in canvas pixels, resolved
+  from the **R3F canvas box**, so an embedded preview composes from its own size.
+  `mode` flips to `side` at 768px.
+- `PANEL_CROP` / `PANEL_ASPECT` / `BACKDROP_OPACITY` — which part of
+  `dish-plated.jpg` is the subject, and how far the wide backdrop is dimmed.
+- `HERO_LIGHTS`, `HERO_MATERIALS`, `HERO_MOTION`, `HERO_PANEL_REVEAL`.
+- `resolvePanelTransform(layout, w, h, HERO_CAMERA)` — the panel's world
+  transform, consumed by `HeroScene.tsx`.
+
+How to change things:
+
+- Different dish photo: replace `public/images/hero/dish-plated.jpg`, then
+  re-measure the crop and update `PANEL_CROP` (the crop is expressed as source
+  fractions, not pixels).
+- Bigger/smaller plate, different framing: edit `HERO_COMPOSITION`. The CSS
+  fallback panel re-derives from the same table at render time, so both layers
+  move together.
+- Brighter/darker food: edit `HERO_LIGHTS` (key/rim/fill/exposure) and
+  `HERO_MATERIALS`. The dish panel itself is deliberately **not** tone-mapped
+  (`toneMapped={false}`) so the WebGL plate matches the CSS fallback pixel for
+  pixel; lit surfaces (table, steam) still are.
+- Motion: `HERO_MOTION` is the whole budget (plate yaw ±1.4°, pointer
+  ±0.8°/±0.5°, camera drift, scroll rise/dolly, steam and mote counts/opacity).
+  GSAP owns scroll position, R3F owns scene motion, Framer Motion owns UI, CSS
+  owns hover/focus — one owner per property.
+
+Verification available in-repo:
+
+- `npx tsx scripts/hero-projection-check.mjs` — projects the 3D panel through the
+  real camera and compares it against the CSS fallback box at 11 viewports.
+  Current result: worst delta 0.00px, panel faces the camera everywhere.
+- `npm run test:hydration` — hydration gate (see §6).
+- Panel painting is shared: `paintHeroPanel()` in
+  `src/lib/three/panelPainting.ts` renders the WebGL texture **and** is mirrored
+  by the CSS fallback's crop/feather, so the first paint and the cross-fade agree.
+
+Known limitation: the sandbox this work was done in has no browser or GPU
+(`next dev` + jsdom only), so the WebGL layer's *pixels* could not be captured.
+Composition and geometry were verified numerically (projection check + served
+CSS agreement within 2px); the lighting/material appearance needs one visual
+pass in a real browser. Do not run `next build` while `next dev` is running —
+both use `.next`, and the production build corrupts the dev server's client
+manifest (chunk 404s, "React Client Manifest" errors).

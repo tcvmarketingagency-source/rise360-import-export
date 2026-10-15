@@ -5,7 +5,19 @@ import { Environment, PerspectiveCamera } from "@react-three/drei";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { SteamParticles } from "./SteamParticles";
-import { getShadowTexture, getSlateTexture } from "@/lib/three/textures";
+import { getSlateTexture } from "@/lib/three/textures";
+import { paintHeroPanel } from "@/lib/three/panelPainting";
+import {
+  HERO_CAMERA,
+  HERO_LIGHTS,
+  resolvePanelTransform,
+  HERO_MATERIALS,
+  HERO_MOTION,
+  PANEL_ASPECT,
+  PANEL_CROP,
+  resolveHeroLayout,
+  type HeroLayout,
+} from "@/lib/three/hero-rig";
 import {
   heroScroll,
   pointerState,
@@ -26,143 +38,125 @@ export interface HeroSceneProps {
   onReady?: () => void;
 }
 
-/* ── Plate profile ────────────────────────────────────────────────────────── */
+/* ── Art direction values shared with the CSS panel ───────────────────────── */
 
-function buildPlateProfile(): THREE.Vector2[] {
-  return [
-    new THREE.Vector2(0.0, 0.0),
-    new THREE.Vector2(0.62, 0.006),
-    new THREE.Vector2(0.92, 0.026),
-    new THREE.Vector2(1.08, 0.072),
-    new THREE.Vector2(1.19, 0.152),
-    new THREE.Vector2(1.235, 0.19),
-    new THREE.Vector2(1.192, 0.196),
-    new THREE.Vector2(1.0, 0.125),
-    new THREE.Vector2(0.62, 0.064),
-    new THREE.Vector2(0.0, 0.05),
-  ];
-}
+const PANEL_TEXTURE_WIDTH: Record<DeviceProfile, number> = { low: 640, mid: 900, high: 1200 };
 
 /**
- * The photographic dish is mapped onto a disc and alpha-masked with a soft
- * radial falloff, so real food imagery sits *inside* a real 3D ceramic plate
- * instead of being pasted on top of the scene.
+ * Paint the dish photograph once: cropped around the dish, lightly vignetted,
+ * warm sheen from the upper left, feathered into the dark. Identical pixels to
+ * the static fallback because it is the same function.
  */
-function useMaskedDishTexture(src: string): THREE.Texture {
-  const texture = useLoader(THREE.TextureLoader, src);
+function usePanelTexture(src: string, quality: DeviceProfile): THREE.Texture {
+  const loaded = useLoader(THREE.TextureLoader, src);
 
   return useMemo(() => {
-    const image = texture.image as HTMLImageElement | undefined;
-    if (!image || typeof document === "undefined") return texture;
+    const image = loaded.image as CanvasImageSource & { width: number; height: number };
+    if (!image || typeof document === "undefined") return loaded;
 
-    const size = 1024;
+    const width = PANEL_TEXTURE_WIDTH[quality];
+    const height = Math.round(width / PANEL_ASPECT);
     const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return texture;
+    if (!ctx) return loaded;
 
-    const scale = Math.max(size / image.width, size / image.height);
-    const drawWidth = image.width * scale;
-    const drawHeight = image.height * scale;
-    ctx.drawImage(image, (size - drawWidth) / 2, (size - drawHeight) / 2, drawWidth, drawHeight);
+    paintHeroPanel(ctx, image, { width, height, image: { width: image.width, height: image.height } });
 
-    // Circular mask so the photo melts into the plate rather than ending abruptly.
-    ctx.globalCompositeOperation = "destination-in";
-    const mask = ctx.createRadialGradient(size / 2, size / 2, size * 0.2, size / 2, size / 2, size * 0.47);
-    mask.addColorStop(0, "rgba(0,0,0,1)");
-    mask.addColorStop(0.74, "rgba(0,0,0,0.97)");
-    mask.addColorStop(0.93, "rgba(0,0,0,0.4)");
-    mask.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = mask;
-    ctx.fillRect(0, 0, size, size);
-    ctx.globalCompositeOperation = "source-over";
-
-    const masked = new THREE.CanvasTexture(canvas);
-    masked.colorSpace = THREE.SRGBColorSpace;
-    masked.anisotropy = 4;
-    return masked;
-  }, [texture]);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    return texture;
+  }, [loaded, quality]);
 }
 
-/* ── Lighting ─────────────────────────────────────────────────────────────── */
+/* ── Lighting rig (values live in hero-rig.ts) ────────────────────────────── */
 
 function StudioLights({ reducedMotion }: { reducedMotion: boolean }) {
   const sweepRef = useRef<THREE.SpotLight>(null);
-  const counterRef = useRef<THREE.PointLight>(null);
 
   useFrame(({ clock }) => {
-    if (reducedMotion) return;
+    const light = sweepRef.current;
+    if (!light) return;
+    const { radius, height, heightBob, angularSpeed, intensity, intensityPulse } = HERO_LIGHTS.key;
+
+    if (reducedMotion) {
+      light.position.set(radius * 0.86, height, radius * 0.5);
+      light.intensity = intensity;
+      return;
+    }
+
     const t = clock.elapsedTime;
-    if (sweepRef.current) {
-      const angle = t * 0.16;
-      sweepRef.current.position.set(
-        Math.cos(angle) * 2.7,
-        2.5 + Math.sin(t * 0.22) * 0.24,
-        Math.sin(angle) * 2.7,
-      );
-      // One slow, confident pass of light rather than a strobing effect.
-      sweepRef.current.intensity = 26 + Math.sin(t * 0.3) * 7;
-    }
-    if (counterRef.current) {
-      counterRef.current.intensity = 4 + Math.sin(t * 0.45 + 1.2) * 1.4;
-    }
+    const angle = t * angularSpeed;
+    light.position.set(Math.cos(angle) * radius, height + Math.sin(t * 0.2) * heightBob, Math.sin(angle) * radius);
+    // A slow breath of a few percent — never enough to change how dark the
+    // frame reads, and never on top of a material's own emission.
+    light.intensity = intensity + Math.sin(t * 0.28) * intensityPulse;
   });
 
   return (
     <>
-      <ambientLight intensity={0.42} color="#ffdcb0" />
-      <hemisphereLight intensity={0.22} color="#ffd9a4" groundColor="#120c08" />
+      <ambientLight intensity={HERO_LIGHTS.ambient.intensity} color={HERO_LIGHTS.ambient.color} />
+      <hemisphereLight
+        intensity={HERO_LIGHTS.hemisphere.intensity}
+        color={HERO_LIGHTS.hemisphere.sky}
+        groundColor={HERO_LIGHTS.hemisphere.ground}
+      />
       <spotLight
         ref={sweepRef}
-        position={[2.7, 2.5, 1.4]}
-        angle={0.62}
-        penumbra={1}
-        distance={11}
-        decay={2}
-        intensity={26}
-        color="#ffc98d"
+        position={[HERO_LIGHTS.key.radius * 0.86, HERO_LIGHTS.key.height, HERO_LIGHTS.key.radius * 0.5]}
+        angle={HERO_LIGHTS.key.angle}
+        penumbra={HERO_LIGHTS.key.penumbra}
+        distance={HERO_LIGHTS.key.distance}
+        decay={HERO_LIGHTS.key.decay}
+        intensity={HERO_LIGHTS.key.intensity}
+        color={HERO_LIGHTS.key.color}
       />
-      <directionalLight position={[-3.2, 2.4, -2.6]} intensity={0.75} color="#9a6231" />
+      <directionalLight
+        position={HERO_LIGHTS.rim.position as unknown as [number, number, number]}
+        intensity={HERO_LIGHTS.rim.intensity}
+        color={HERO_LIGHTS.rim.color}
+      />
       <pointLight
-        ref={counterRef}
-        position={[0, 0.85, 0.7]}
-        intensity={4}
-        distance={4}
-        decay={2}
-        color="#ffb469"
+        position={HERO_LIGHTS.fill.position as unknown as [number, number, number]}
+        intensity={HERO_LIGHTS.fill.intensity}
+        distance={HERO_LIGHTS.fill.distance}
+        decay={HERO_LIGHTS.fill.decay}
+        color={HERO_LIGHTS.fill.color}
       />
     </>
   );
 }
 
+/** A dark room with one warm soft strip: enough to shape stone, never to flood it. */
 function ProceduralEnvironment({ quality }: { quality: DeviceProfile }) {
   return (
-    <Environment resolution={quality === "low" ? 32 : 64} frames={1}>
+    <Environment resolution={quality === "low" ? 32 : 64} frames={1} environmentIntensity={HERO_LIGHTS.envIntensity}>
       <mesh scale={24}>
         <sphereGeometry args={[1, 12, 12]} />
-        <meshBasicMaterial color="#241812" side={THREE.BackSide} />
+        <meshBasicMaterial color="#191009" side={THREE.BackSide} />
       </mesh>
-      {/* Warm studio softbox upper right — gives the ceramic its sheen. */}
       <mesh position={[3.4, 3.1, 2.2]} rotation={[0, -0.7, 0]}>
         <planeGeometry args={[3.2, 2.2]} />
-        <meshBasicMaterial color="#ffb469" />
+        <meshBasicMaterial color="#6d4522" />
       </mesh>
       <mesh position={[-3.2, 1.4, -1.6]} rotation={[0, 0.6, 0]}>
         <planeGeometry args={[3.4, 2.6]} />
-        <meshBasicMaterial color="#40281a" />
+        <meshBasicMaterial color="#221610" />
       </mesh>
       <mesh position={[0, -2.4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[8, 8]} />
-        <meshBasicMaterial color="#150d08" />
+        <meshBasicMaterial color="#0f0906" />
       </mesh>
     </Environment>
   );
 }
 
-/* ── Plated scene ─────────────────────────────────────────────────────────── */
+/* ── The subject: the dish photograph, framed by the dark ─────────────────── */
 
-function PlatedDish({
+function DishPanel({
   dishSrc,
   quality,
   reducedMotion,
@@ -173,113 +167,127 @@ function PlatedDish({
   reducedMotion: boolean;
   onReady?: () => void;
 }) {
-  const dishTexture = useMaskedDishTexture(dishSrc);
-  const plateProfile = useMemo(() => buildPlateProfile(), []);
+  const texture = usePanelTexture(dishSrc, quality);
+  const { size, camera, invalidate } = useThree();
+  const groupRef = useRef<THREE.Group>(null);
+
+  // Composition is resolved from the *canvas* box, so an embedded preview is
+  // composed from its own dimensions rather than the window's.
+  const layout = useMemo(() => resolveHeroLayout(size.width, size.height), [size.width, size.height]);
   const slate = useMemo(() => getSlateTexture(), []);
-  const shadow = useMemo(() => getShadowTexture(), []);
-  const plateRef = useRef<THREE.Group>(null);
-  const dishRef = useRef<THREE.Mesh>(null);
-  const invalidate = useThree((state) => state.invalidate);
+
+  const transform = useMemo(
+    () => resolvePanelTransform(layout, size.width, size.height, HERO_CAMERA),
+    [layout, size.width, size.height],
+  );
+  const quaternion = useMemo(
+    () =>
+      new THREE.Quaternion().setFromRotationMatrix(
+        new THREE.Matrix4().makeBasis(
+          new THREE.Vector3(...transform.basis.right),
+          new THREE.Vector3(...transform.basis.up),
+          new THREE.Vector3(...transform.basis.forward).negate(),
+        ),
+      ),
+    [transform],
+  );
 
   useEffect(() => {
-    // Makes sure the first painted frame happens after the photo has decoded.
     invalidate();
     onReady?.();
-  }, [invalidate, onReady]);
+  }, [invalidate, onReady, texture]);
 
   useFrame(({ clock }) => {
-    if (reducedMotion) return;
+    const group = groupRef.current;
+    if (!group) return;
+
+    if (reducedMotion) {
+      group.rotation.set(0, 0, 0);
+      group.position.y = 0;
+      return;
+    }
+
     const t = clock.elapsedTime;
-    if (plateRef.current) {
-      plateRef.current.rotation.y = Math.sin(t * 0.09) * 0.035 + pointerState.x * 0.05;
-      plateRef.current.position.y = Math.sin(t * 0.35) * 0.004;
-    }
-    if (dishRef.current) {
-      const material = dishRef.current.material as THREE.MeshStandardMaterial;
-      // Kitchen-warm light breathing across the surface of the dish.
-      material.emissiveIntensity = 0.62 + Math.sin(t * 0.4) * 0.06;
-    }
+    const yaw = THREE.MathUtils.degToRad(HERO_MOTION.yawDegrees);
+    const pointerYaw = THREE.MathUtils.degToRad(HERO_MOTION.pointerYawDegrees);
+    const pointerPitch = THREE.MathUtils.degToRad(HERO_MOTION.pointerPitchDegrees);
+
+    // A dish on a table: a degree or two of turn, a couple of millimetres of
+    // lift. Anything more starts to float.
+    group.rotation.y = Math.sin(t * HERO_MOTION.yawSpeed) * yaw + pointerState.x * pointerYaw;
+    group.rotation.x = pointerState.y * pointerPitch;
+    group.position.y = Math.sin(t * HERO_MOTION.driftSpeed) * HERO_MOTION.driftWorld;
   });
+
+  const steamRadius = Math.max(0.12, (transform.worldWidth * PANEL_CROP.foodRadius) / 2);
 
   return (
     <group>
       <ProceduralEnvironment quality={quality} />
       <StudioLights reducedMotion={reducedMotion} />
 
-      {/* Dark slate table */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
-        <planeGeometry args={[18, 18]} />
-        <meshStandardMaterial map={slate} color="#3a2c22" roughness={0.78} metalness={0.06} />
+      {/* Dark stone tabletop — tactile, not a backdrop */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.9, 0]}>
+        <planeGeometry args={[22, 22]} />
+        <meshStandardMaterial
+          map={slate}
+          color={HERO_MATERIALS.table.color}
+          roughness={HERO_MATERIALS.table.roughness}
+          metalness={HERO_MATERIALS.table.metalness}
+        />
       </mesh>
 
-      {/* Art-directed contact shadow instead of a shadow map: cheaper, calmer */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0016, 0]}>
-        <planeGeometry args={[3.5, 3.5]} />
-        <meshBasicMaterial map={shadow} transparent opacity={0.92} depthWrite={false} />
+      {/* Warm pool of light under the subject (additive, very low) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[transform.center[0], -0.89, transform.center[2] + 0.2]}>
+        <planeGeometry args={[HERO_MATERIALS.glow.size, HERO_MATERIALS.glow.size]} />
+        <meshBasicMaterial
+          color={HERO_MATERIALS.glow.color}
+          transparent
+          opacity={HERO_MATERIALS.glow.opacity}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
       </mesh>
 
-      <group ref={plateRef}>
-        <mesh>
-          <latheGeometry args={[plateProfile, quality === "low" ? 48 : 96]} />
-          <meshPhysicalMaterial
-            color="#eee4d4"
-            roughness={0.3}
-            metalness={0}
-            clearcoat={0.55}
-            clearcoatRoughness={0.35}
-            envMapIntensity={0.85}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-
-        {/* Thin warm brass rim — catches the moving studio light */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.2, 0]}>
-          <torusGeometry args={[1.212, 0.011, 12, quality === "low" ? 64 : 128]} />
-          <meshStandardMaterial color="#c9973f" metalness={0.92} roughness={0.28} envMapIntensity={1.1} />
-        </mesh>
-
-        {/* The dish itself — real photography, masked, lit as a surface */}
-        <mesh ref={dishRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.058, 0]}>
-          <circleGeometry args={[0.94, quality === "low" ? 48 : 96]} />
-          <meshStandardMaterial
-            map={dishTexture}
-            emissiveMap={dishTexture}
-            emissive="#ffffff"
-            emissiveIntensity={0.62}
-            roughness={0.55}
-            metalness={0.02}
-            transparent
-            alphaTest={0.02}
-          />
-        </mesh>
+      <group ref={groupRef}>
+        <group position={transform.center} quaternion={quaternion}>
+          <mesh renderOrder={1}>
+            <planeGeometry args={[transform.worldWidth, transform.worldHeight]} />
+            {/* The dish panel is the same painting the CSS fallback shows, so it
+                must not be graded a second time: ACES at exposure 0.86 would
+                darken it and the WebGL cross-fade would visibly shift the food.
+                Lit surfaces (table, steam) keep the tone-mapped treatment. */}
+            <meshBasicMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
+          </mesh>
+        </group>
       </group>
 
-      {/* Steam rising off the plate */}
+      {/* Steam rising off the dish in the photograph */}
       <SteamParticles
-        count={quality === "low" ? 40 : quality === "mid" ? 78 : 120}
-        position={[0, 0.12, 0]}
-        radius={0.48}
-        rise={2.3}
-        spread={0.45}
-        sway={0.2}
-        size={quality === "low" ? 30 : 38}
-        speed={0.05}
-        opacity={0.24}
+        count={HERO_MOTION.steamCount[quality]}
+        position={[transform.center[0], transform.center[1] + transform.worldHeight * 0.06, transform.center[2] + 0.25]}
+        radius={steamRadius}
+        rise={1.9}
+        spread={0.4}
+        sway={0.16}
+        size={quality === "low" ? 26 : 34}
+        speed={0.045}
+        opacity={HERO_MOTION.steamOpacity}
         color="#f6ead6"
       />
 
-      {/* Spice motes drifting through the light */}
+      {/* A little spice dust so the light has something to move through */}
       <SteamParticles
         kind="mote"
-        count={quality === "high" ? 90 : quality === "mid" ? 48 : 24}
-        position={[0, 0.25, 0]}
-        radius={1.7}
-        rise={1.5}
-        spread={0.9}
-        sway={0.5}
-        size={quality === "low" ? 12 : 16}
-        speed={0.09}
-        opacity={0.5}
+        count={HERO_MOTION.moteCount[quality]}
+        position={[transform.center[0], transform.center[1] - 0.4, transform.center[2] + 0.5]}
+        radius={Math.max(0.6, transform.worldWidth * 0.7)}
+        rise={1.4}
+        spread={0.8}
+        sway={0.4}
+        size={quality === "low" ? 10 : 14}
+        speed={0.07}
+        opacity={HERO_MOTION.moteOpacity}
         color="#ffca86"
       />
     </group>
@@ -291,7 +299,7 @@ function PlatedDish({
 function Atmosphere({ quality }: { quality: DeviceProfile }) {
   return (
     <group>
-      <ambientLight intensity={0.4} color="#ffdcb0" />
+      <ambientLight intensity={HERO_LIGHTS.ambient.intensity * 2} color={HERO_LIGHTS.ambient.color} />
       <SteamParticles
         count={quality === "low" ? 34 : 64}
         position={[0, -0.9, 0]}
@@ -325,14 +333,13 @@ function Atmosphere({ quality }: { quality: DeviceProfile }) {
 
 function CameraRig({ variant, reducedMotion }: { variant: HeroSceneVariant; reducedMotion: boolean }) {
   const { camera, size, invalidate } = useThree();
-  const base = useRef(new THREE.Vector3(0, 1.52, 3.65));
+  const base = useRef(new THREE.Vector3(...HERO_CAMERA.position));
 
   useEffect(() => {
-    const narrow = size.width < 720;
     base.current.set(
-      0,
-      variant === "atmosphere" ? 0 : narrow ? 1.95 : 1.52,
-      variant === "atmosphere" ? 3.2 : narrow ? 4.55 : 3.65,
+      HERO_CAMERA.position[0],
+      variant === "atmosphere" ? 0 : size.width < 720 ? HERO_CAMERA.position[1] * 1.08 : HERO_CAMERA.position[1],
+      variant === "atmosphere" ? 3.4 : size.width < 720 ? HERO_CAMERA.position[2] * 1.1 : HERO_CAMERA.position[2],
     );
     invalidate();
   }, [size.width, variant, invalidate]);
@@ -352,9 +359,11 @@ function CameraRig({ variant, reducedMotion }: { variant: HeroSceneVariant; redu
     stepPointer(0.045);
     stepHeroScroll(0.075);
 
+    const look = new THREE.Vector3(...HERO_CAMERA.target);
+
     if (reducedMotion) {
       camera.position.copy(base.current);
-      camera.lookAt(0, 0.1, 0);
+      camera.lookAt(look);
       return;
     }
 
@@ -362,17 +371,19 @@ function CameraRig({ variant, reducedMotion }: { variant: HeroSceneVariant; redu
     const s = heroScroll.eased;
 
     if (variant === "atmosphere") {
-      camera.position.set(pointerState.x * 0.22, -pointerState.y * 0.16, base.current.z - s * 0.5);
+      camera.position.set(pointerState.x * 0.18, -pointerState.y * 0.14, base.current.z - s * 0.4);
       camera.lookAt(0, 0, 0);
       return;
     }
 
+    // Progressive, scroll-linked drift: no states to jump between, and the
+    // pointer only ever adds a fraction of a unit.
     camera.position.set(
-      pointerState.x * 0.34 + Math.sin(t * 0.14) * 0.035,
-      base.current.y + pointerState.y * 0.17 + s * 0.95 + Math.sin(t * 0.2) * 0.022,
-      base.current.z - s * 1.05,
+      pointerState.x * 0.22 + Math.sin(t * HERO_MOTION.cameraDriftSpeed) * HERO_MOTION.cameraDrift,
+      base.current.y + pointerState.y * 0.12 + s * HERO_MOTION.cameraScrollRise + Math.sin(t * 0.17) * 0.018,
+      base.current.z - s * HERO_MOTION.cameraScrollDolly,
     );
-    camera.lookAt(0, 0.1 + s * 0.22, 0);
+    camera.lookAt(look.x, look.y + s * 0.16, look.z);
   });
 
   return null;
@@ -394,13 +405,13 @@ export default function HeroScene({
     return [1, 1.2];
   }, [quality]);
 
-  const fov = variant === "atmosphere" ? 42 : 34;
+  const fov = variant === "atmosphere" ? 42 : HERO_CAMERA.fov;
 
   return (
     <Canvas
       dpr={dpr}
       frameloop={active && !reducedMotion ? "always" : "demand"}
-      camera={{ fov, position: [0, 1.52, 3.65], near: 0.1, far: 40 }}
+      camera={{ fov, position: [...HERO_CAMERA.position], near: 0.1, far: 40 }}
       gl={{
         antialias: quality !== "low",
         alpha: true,
@@ -410,16 +421,16 @@ export default function HeroScene({
       }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.05;
+        gl.toneMappingExposure = HERO_LIGHTS.exposure;
         gl.outputColorSpace = THREE.SRGBColorSpace;
       }}
       style={{ position: "absolute", inset: 0, background: "transparent" }}
       data-testid="hero-canvas"
     >
-      <PerspectiveCamera makeDefault fov={fov} position={[0, 1.52, 3.65]} />
+      <PerspectiveCamera makeDefault fov={fov} position={[...HERO_CAMERA.position]} />
       <Suspense fallback={null}>
         {variant === "plated" ? (
-          <PlatedDish
+          <DishPanel
             dishSrc={dishSrc}
             quality={quality}
             reducedMotion={reducedMotion}
