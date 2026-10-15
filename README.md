@@ -77,6 +77,7 @@ Useful scripts:
 | `npm run typecheck` | `tsc --noEmit` in strict mode |
 | `npm run test:e2e` | Playwright: e2e + responsive + motion + domain |
 | `npm run test:e2e -- --project=unit` | Domain tests only (no browser needed) |
+| `npm run test:hydration` | Hydration smoke test against the running server (no browser needed) |
 | `npm run test:e2e -- --project=mobile-390` | One device profile |
 | `node scripts/build-assets.mjs` | Normalise photography + derive hero and story crops |
 | `node scripts/make-placeholders.mjs` | Generate labelled placeholder frames for pending photography |

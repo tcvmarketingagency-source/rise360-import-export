@@ -177,17 +177,22 @@ export function Hero({ variant = "plated" }: HeroProps) {
     );
 
     const onMove = (event: PointerEvent) => {
-      const x = (event.clientX / window.innerWidth) * 2 - 1;
+      // Vertical pointer position only: a restrained, depth-graded drift, no
+      // second axis competing for the same transform.
       const y = (event.clientY / window.innerHeight) * 2 - 1;
       quickTos.forEach((move, index) => {
         const depth = (index + 1) * 5;
         move(-y * depth);
       });
-      void x;
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      // quickTo returns a function backed by a persistent tween; kill it so a
+      // remount (HMR, route change) cannot leave tweens ticking on dead nodes.
+      for (const move of quickTos) move.tween.kill();
+    };
   }, [ready, reducedMotion, isDesktopPointer]);
 
   return (

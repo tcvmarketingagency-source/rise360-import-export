@@ -5,13 +5,25 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+/**
+ * One numbering spine for the whole page — the chapters a visitor scrolls
+ * through. These numbers are the same ones the sections print in their own
+ * micro labels (storyCopy/menuSectionCopy/favouritesCopy/…), so the nav and the
+ * page never disagree:
+ *
+ *   01 hero · 02 the kitchen · 03 the plate · 04 menu · 05 favourites
+ *   06 ordering · 07 delivery · 08 beyond delivery
+ *
+ * The story section spans the film's 02–03 scenes, which is why the nav jumps
+ * from 02 to 04: 03 is reached inside the story, not as its own stop.
+ */
 export const nav = [
-  { id: "story", label: "The Story", href: "#story", micro: "01" },
-  { id: "menu", label: "Menu", href: "#menu", micro: "02" },
-  { id: "favourites", label: "Favourites", href: "#favourites", micro: "03" },
-  { id: "order", label: "How Ordering Works", href: "#order", micro: "04" },
-  { id: "delivery", label: "Delivery", href: "#delivery", micro: "05" },
-  { id: "visit", label: "Visit / Hotel", href: "#visit", micro: "06" },
+  { id: "story", label: "The Story", href: "#story", micro: "02" },
+  { id: "menu", label: "Menu", href: "#menu", micro: "04" },
+  { id: "favourites", label: "Favourites", href: "#favourites", micro: "05" },
+  { id: "order", label: "How Ordering Works", href: "#order", micro: "06" },
+  { id: "delivery", label: "Delivery", href: "#delivery", micro: "07" },
+  { id: "visit", label: "Visit / Hotel", href: "#visit", micro: "08" },
 ] as const;
 
 export const heroCopy = {

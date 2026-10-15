@@ -114,7 +114,55 @@ classifications, photography captions and delivery parameters are all placeholde
 - It does not claim that opening WhatsApp places an order, or that a submitted order is accepted.
 - It does not fake a successful payment, and it contains no API keys, tokens or credentials.
 
-## 6. Open technical items before production
+## 6. The reported hydration warning — cause, fix and how to re-check it
+
+**Reported:** `A tree hydrated but some attributes of the server rendered HTML didn't match the client
+properties`, pointing at `<RootLayout><html …>` with `- data-intro="skip"`.
+
+**Cause.** A pre-paint `<script>` in the root layout wrote `data-intro` onto `<html>` for two cases:
+the visitor had already seen the intro in this session, or their OS asks for reduced motion. React
+never renders that attribute, so on those visits the DOM carried an attribute the client props did
+not — React reports it and, because it never patches attributes during hydration, the attribute kept
+working. The mismatch was real but harmless; the noise (and the dev overlay) was not.
+
+**Fix, at the source.**
+- `prefers-reduced-motion` is now handled **purely in CSS** (`src/app/globals.css`), so that gate
+  needs no script, no storage read and no DOM write at all — and it now works with JavaScript off.
+- The session gate keeps its pre-paint attribute, because it is what makes the first paint *be the
+  film* instead of a flash of the hero. That single attribute is declared with React's documented
+  escape hatch, scoped to `<html>` only (`suppressHydrationWarning` in `src/app/layout.tsx`, with the
+  reason inline). It covers that element's own attribute diff; child mismatches still surface.
+- **The alternative we did not take:** reading a cookie in the root layout so the server renders the
+  attribute. That is fully deterministic but forces every route to render dynamically. Today `/`,
+  `/checkout`, `/contact` and the policy pages are statically prerendered (`next build` output), and
+  `/` is the page the cinematic opening depends on — so this is a decision for Maitri/production, not
+  a silent change. Say the word and it can be switched.
+
+**How to re-check it:**
+1. `npm run test:hydration` (dev server running on :3000) — loads the real server HTML, executes the
+   real client bundles, asserts React actually attached, and runs two must-fail controls. Any
+   hydration warning fails the run.
+2. In a browser: visit `/`, let the intro finish, then reload — or enable OS reduced motion and load
+   the page. Neither case should log a hydration error in the console.
+3. Production check: `npm run build && npx next start -p 3100`, then
+   `node scripts/hydration-check.mjs http://127.0.0.1:3100/ --prod`.
+
+**Known limits of that harness:** it is a DOM simulation, not a browser. It detects attribute-level
+hydration mismatches (verified by its controls) but React does not surface *text-node* mismatches in
+this environment, so text differences are not covered; and React's dev-only diff is not emitted in
+every realm, which is why the harness warms up first and treats "any warning in any attempt" as
+failure. Real-browser console checks on the preview and on a phone are still part of the pre-launch
+list below.
+
+## 7. Chapter numbering
+
+One spine numbers the whole page, and the nav, the section labels and the film all use it:
+`01` hero · `02` the kitchen · `03` the plate · `04` menu · `05` favourites · `06` ordering ·
+`07` delivery · `08` beyond delivery. The nav jumps `02 → 04` because scene `03` is reached inside
+the story section. Edit the numbers in `src/lib/content/site.ts` (`nav`) and the matching
+`*.micro` strings in the same file — they are meant to move together.
+
+## 8. Open technical items before production
 
 - Run the Playwright suite against the deployed preview and against a real Android device.
 - Verify WebGL quality and frame stability on a low-end Android phone (the scene scales itself via

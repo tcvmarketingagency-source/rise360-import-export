@@ -13,6 +13,7 @@ import { favouritesCopy } from "@/lib/content/site";
 import type { MenuItem } from "@/lib/menu/types";
 import { useHeadlineReveal, useIsomorphicLayoutEffect, useSectionReveal } from "@/lib/motion/gsap";
 import { useMotion } from "@/components/providers/MotionProvider";
+import { bezier, duration } from "@/lib/motion/tokens";
 import { gsap, ScrollTrigger } from "@/components/providers/MotionProvider";
 import { gsapEase } from "@/lib/motion/tokens";
 
@@ -103,7 +104,7 @@ export function FavouritesSection() {
               initial={{ opacity: 0, y: 26 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1], delay: index * 0.05 }}
+              transition={{ duration: duration.smooth, ease: bezier.cinematic, delay: Math.min(index * 0.05, 0.25) }}
               className="group relative flex w-[78vw] shrink-0 snap-start flex-col overflow-hidden rounded-sm border border-ivory/10 bg-char/70 sm:w-[52vw] lg:w-[27rem]"
             >
               <button

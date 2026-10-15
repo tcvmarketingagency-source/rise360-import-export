@@ -1,7 +1,7 @@
 /**
  * Hydration smoke test.
  *
- *   node scripts/hydration-check.mjs [url] [--full]
+ *   node scripts/hydration-check.mjs [url] [--full] [--prod]
  *
  * Loads the real server-rendered page into a DOM implementation, executes the
  * actual Next.js client bundles, and reports every React hydration warning or
@@ -33,6 +33,14 @@ import { TextDecoder, TextEncoder } from "node:util";
 
 const target = process.argv[2] ?? "http://127.0.0.1:3000/";
 const FULL = process.argv.includes("--full");
+/**
+ * Production mode (`--prod`): React's production build never prints the
+ * hydration-diff explanation, so the dev-only controls cannot fire. In this
+ * mode the check verifies that hydration attaches cleanly and that no console
+ * error (including "Hydration failed because the initial UI does not match")
+ * is emitted, and it reports the controls as skipped rather than failed.
+ */
+const PROD = process.argv.includes("--prod");
 const ATTEMPTS = 2;
 
 /** Console/error noise that is environmental rather than a rendering bug. */
@@ -258,7 +266,7 @@ results.skipped = await measure("returning visit (pre-paint data-intro on <html>
 // A harness that cannot detect a mismatch proves nothing, so two classic
 // mismatch classes are injected deliberately and MUST be caught.
 const controls = {};
-
+if (!PROD) {
 // Control A: an extra attribute that React never rendered, on a body-level
 // element (<html> itself is the documented exemption, see the header comment).
 controls.attribute = await measure(
@@ -284,12 +292,17 @@ controls.value = await measure(
 await run("note — extra attribute on <html> (documented exemption, expected quiet)", {
   mangleHtml: (html) => html.replace('<html lang="en-IN"', '<html data-extension="theme" lang="en-IN"'),
 });
+} else {
+  console.log("\nproduction mode: dev-only controls skipped (React's production build does not print hydration diffs)");
+}
 
 // ── Verdict ────────────────────────────────────────────────────────────────
 const realCases = [...results.fresh.hits, ...results.skipped.hits];
 const controlFailures = [];
-if (controls.attribute.hits.length === 0) controlFailures.push("Control A (extra attribute) was not detected");
-if (controls.value.hits.length === 0) controlFailures.push("Control B (changed attribute value) was not detected");
+if (!PROD) {
+  if (controls.attribute?.hits.length === 0) controlFailures.push("Control A (extra attribute) was not detected");
+  if (controls.value?.hits.length === 0) controlFailures.push("Control B (changed attribute value) was not detected");
+}
 
 console.log("\n════════ summary ════════");
 console.log(`server markup:   ${ssrCarriesFlag ? "carries data-intro (FAIL)" : "static, no data-intro"}`);
@@ -299,11 +312,13 @@ console.log(
     ` returning: [${results.skipped.perAttempt.join(", ")}])`,
 );
 for (const text of realCases) console.log(`  ✗ ${text}`);
-console.log(`controls:        ${controlFailures.length === 0 ? "both caught (harness is sensitive)" : "FAILED"}`);
+console.log(
+  `controls:        ${PROD ? "skipped in production mode" : controlFailures.length === 0 ? "both caught (harness is sensitive)" : "FAILED"}`,
+);
 for (const text of controlFailures) console.log(`  ✗ ${text}`);
-if (controls.attribute.hits.length)
+if (controls.attribute?.hits.length)
   console.log(`  ✓ Control A caught (warnings per attempt: [${controls.attribute.perAttempt.join(", ")}])`);
-if (controls.value.hits.length)
+if (controls.value?.hits.length)
   console.log(`  ✓ Control B caught (warnings per attempt: [${controls.value.perAttempt.join(", ")}])`);
 
 const failed = realCases.length > 0 || controlFailures.length > 0 || ssrCarriesFlag;
