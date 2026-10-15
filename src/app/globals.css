@@ -208,7 +208,23 @@
 }
 
 /* ── Intro gating ─────────────────────────────────────────────────────────── */
-/* Set by the inline script in the root layout before first paint. */
+/*
+ * The cinematic overlay is part of the server-rendered HTML so that the first
+ * paint is already the film. Two gates keep it from becoming an obstacle, and
+ * both are decided before paint:
+ *
+ *   1. `prefers-reduced-motion` — CSS only. No script, no storage read, works
+ *      with JavaScript disabled: the overlay never becomes visible.
+ *   2. Already seen this session — the inline script in the root layout writes
+ *      `data-intro="skip"` on <html>; that attribute is declared to React on
+ *      the <html> element (see root layout). CSS then hides the overlay.
+ */
+@media (prefers-reduced-motion: reduce) {
+  [data-intro-root] {
+    display: none !important;
+  }
+}
+
 html[data-intro="skip"] [data-intro-root] {
   display: none !important;
 }

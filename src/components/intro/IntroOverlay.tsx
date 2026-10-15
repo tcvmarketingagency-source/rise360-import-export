@@ -10,10 +10,11 @@ import { INTRO_SESSION_KEY, emitIntroComplete, markIntroSeen } from "@/lib/intro
  * Cinematic introduction — rendered in the initial HTML so the first paint is
  * already the film, not a flash of the hero.
  *
- * A tiny inline script in the root layout sets `data-intro="skip"` on <html>
- * when the intro should not play (already seen this session, or the visitor
- * prefers reduced motion). CSS then hides this overlay before the first paint,
- * and this component simply releases the hero choreography.
+ * Two pre-paint gates decide whether it is seen at all, and neither one is this
+ * component: `prefers-reduced-motion` is handled in CSS (globals.css), and
+ * "already seen this session" is handled by a tiny inline script in the root
+ * layout that writes `data-intro="skip"` on <html>. CSS hides the overlay for
+ * both, and this component then simply releases the hero choreography.
  *
  * Guarantees:
  *   • SKIP is always visible; scroll, wheel, tap or any key dismisses instantly.

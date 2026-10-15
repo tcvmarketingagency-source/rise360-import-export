@@ -64,14 +64,36 @@ export const viewport: Viewport = {
 
 /**
  * Runs before first paint: hides the intro overlay for visitors who already saw
- * it this session, or who prefer reduced motion. Keeps the cinematic opening
- * from ever becoming an obstacle.
+ * it this session, so a returning visitor lands straight on the hero instead of
+ * watching the film again.
+ *
+ * Only the *session* case is handled here. `prefers-reduced-motion` is decided
+ * purely in CSS (see the intro-gating block in globals.css), so that half needs
+ * no script, no storage read and no DOM write at all.
+ *
+ * `sessionStorage` is the visitor's own browser state; the server cannot know
+ * it, so this attribute is written before hydration by design. React is told
+ * about that deliberate, single-attribute difference on <html> below.
  */
-const introFlagScript = `try{if(sessionStorage.getItem('maitri.intro.v2')==='done'||matchMedia('(prefers-reduced-motion: reduce)').matches){document.documentElement.dataset.intro='skip'}}catch(e){document.documentElement.dataset.intro='skip'}`;
+const introFlagScript = `try{if(sessionStorage.getItem('maitri.intro.v2')==='done'){document.documentElement.dataset.intro='skip'}}catch(e){document.documentElement.dataset.intro='skip'}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en-IN" className={`${fraunces.variable} ${interTight.variable} ${jetbrainsMono.variable}`}>
+    /**
+     * `suppressHydrationWarning` is scoped to this <html> element only and is
+     * the one documented React escape hatch for attributes that a pre-paint
+     * script owns before hydration (the same pattern React and Next recommend
+     * for theme scripts). It covers <html>'s own attribute diff — children are
+     * still validated normally, so real mismatches elsewhere still surface.
+     * Verified against react-dom 19.1's diffHydratedProperties: the flag only
+     * clears extra-attribute reporting for the element that carries it.
+     * The only such attribute here is `data-intro`, set by introFlagScript.
+     */
+    <html
+      lang="en-IN"
+      className={`${fraunces.variable} ${interTight.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: introFlagScript }} />
         {/* Without JavaScript the intro can never finish, so it is removed and
