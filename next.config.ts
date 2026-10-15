@@ -14,6 +14,13 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  /**
+   * Development only. The dev server is reached through a proxied preview host
+   * (for example https://3000-<id>.e2b.app), so those origins must be trusted
+   * explicitly or Next.js rejects dev asset and HMR requests. Production builds
+   * and previews are unaffected by this option.
+   */
+  allowedDevOrigins: ["*.e2b.app", "*.e2b.dev", "*.vercel.app", "localhost", "127.0.0.1"],
   images: {
     // Local, art-directed assets only — no remote loaders until Maitri supplies
     // approved photography and a domain allowlist.
