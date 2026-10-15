@@ -84,7 +84,7 @@ test.describe("Concept-preview safety and trust", () => {
   test("policy drafts and the handoff list are reachable", async ({ page }) => {
     await page.goto("/handoff");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/approve before this goes live/i);
-    await expect(page.locator("main, body")).toContainText(/not the restaurant's official website/i);
+    await expect(page.locator("main")).toContainText(/not the restaurant's official website/i);
 
     await page.goto("/policies/privacy");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/privacy notice/i);

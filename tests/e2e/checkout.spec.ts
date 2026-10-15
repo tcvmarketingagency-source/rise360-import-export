@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addFirstDishToCart, openSite } from "./helpers";
+import { addFirstDishToCart, openSite, reloadSite, visitSite } from "./helpers";
 
 const valid = {
   customerName: "Ravi Kumar",
@@ -21,18 +21,18 @@ test.describe("Checkout (concept preview)", () => {
   test.beforeEach(async ({ page }) => {
     await openSite(page);
     await page.evaluate(() => window.localStorage.removeItem("maitri.cart.v1"));
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await reloadSite(page);
   });
 
   test("empty order cannot check out", async ({ page }) => {
-    await page.goto("/checkout");
+    await visitSite(page, "/checkout");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/nothing to check out/i);
     await expect(page.getByRole("link", { name: /explore the menu/i })).toBeVisible();
   });
 
   test("validates required fields with specific, readable messages", async ({ page }) => {
     await addFirstDishToCart(page);
-    await page.goto("/checkout");
+    await visitSite(page, "/checkout");
 
     await page.getByTestId("checkout-review").click();
 
@@ -58,12 +58,14 @@ test.describe("Checkout (concept preview)", () => {
 
   test("review step shows the exact summary and transmits nothing in preview mode", async ({ page }) => {
     await addFirstDishToCart(page);
-    await page.goto("/checkout");
+    await visitSite(page, "/checkout");
     await fillCheckout(page);
     await page.getByTestId("checkout-review").click();
 
     // Review shows both the delivery details and the literal message text.
-    await expect(page.getByText(valid.address)).toBeVisible();
+    // The address appears twice (the summary list and the copyable message), so
+    // assert against the summary definition list specifically.
+    await expect(page.getByText(valid.address, { exact: true })).toBeVisible();
     await expect(page.getByText(/Ref: CONCEPT-MR-/)).toBeVisible();
     await expect(page.getByText(/no order has been sent to the restaurant/i)).toBeVisible();
 
@@ -106,7 +108,7 @@ test.describe("Checkout (concept preview)", () => {
     const drawerSubtotal = (await page.getByTestId("cart-subtotal").innerText()).trim();
     await page.keyboard.press("Escape");
 
-    await page.goto("/checkout");
+    await visitSite(page, "/checkout");
     const checkoutSubtotal = (await page.locator("dl").getByText(/^₹/).first().innerText()).trim();
     expect(checkoutSubtotal).toBe(drawerSubtotal);
   });

@@ -74,8 +74,38 @@ export const viewport: Viewport = {
  * `sessionStorage` is the visitor's own browser state; the server cannot know
  * it, so this attribute is written before hydration by design. React is told
  * about that deliberate, single-attribute difference on <html> below.
+ *
+ * The second half of the script exists because the overlay is server-rendered:
+ * it is on screen — with its SKIP control — several hundred milliseconds before
+ * React hydrates and attaches `IntroOverlay`'s handlers. A dismissal in that
+ * window used to be swallowed (measured: hydration at ~1.9s on this build), so
+ * the visitor was held behind the whole film after pressing SKIP. The native
+ * listeners below release the intro exactly the way the React version does, by
+ * writing the same flag the CSS gate already understands, and they stay passive
+ * and disappear from the equation once the overlay unmounts (the `closest`
+ * lookup simply never matches again).
  */
-const introFlagScript = `try{if(sessionStorage.getItem('maitri.intro.v2')==='done'){document.documentElement.dataset.intro='skip'}}catch(e){document.documentElement.dataset.intro='skip'}`;
+const introFlagScript = `try{
+var d=document.documentElement,k='maitri.intro.v2',done=false;
+var inside=function(t){return t&&t.closest&&t.closest('[data-intro-root]')};
+var onClick=function(e){if(inside(e.target))release()};
+var onKey=function(){release()};
+var onTouch=function(e){if(inside(e.target))release()};
+var release=function(){
+if(done)return;done=true;
+document.removeEventListener('click',onClick,true);
+document.removeEventListener('keydown',onKey,true);
+document.removeEventListener('wheel',onTouch,true);
+document.removeEventListener('touchstart',onTouch,true);
+d.dataset.intro='skip';
+try{sessionStorage.setItem(k,'done')}catch(e){}
+};
+if(sessionStorage.getItem(k)==='done'){d.dataset.intro='skip'}else{
+document.addEventListener('click',onClick,true);
+document.addEventListener('keydown',onKey,true);
+document.addEventListener('wheel',onTouch,{passive:true,capture:true});
+document.addEventListener('touchstart',onTouch,{passive:true,capture:true});
+}}catch(e){document.documentElement.dataset.intro='skip'}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -279,6 +279,25 @@ caveats are worth knowing before you read a failure:
 - **Playwright's parallel workers get OOM-killed on a 2-core host.** Use
   `--workers=1` there; the intro's wall-clock release valve
   (`INTRO_MAX_MS` in `IntroOverlay.tsx`) exists for the same class of device.
+- **Do not batch many tests into one Playwright process here.** The browser
+  eventually dies (`browserContext.newPage: … has been closed`,
+  `browserType.launch: Timeout 180000ms`) or the *renderer wedges* — after a
+  reload, `page.evaluate` stops answering while the dev server and software WebGL
+  compete for two cores. Running each test in its own invocation
+  (`-g "<test name>" --workers=1`) is reliable; a single-process run is not.
+- **The `tablet` (iPad Mini) project never launches Chromium on this host**, for
+  any spec, including trivial ones — a launch-time failure, not a product
+  finding. Tablet widths are covered by `scripts/motion-check.mjs` (786px) and
+  the mobile projects instead.
+- **`next dev` grows past 2 GB after about an hour**, which is what starves the
+  browser launches above. Stop it, `rm -rf .next`, start it again and warm a few
+  routes before blaming a test.
+- **A dropped click is silent.** The site is server-rendered, so controls exist
+  before React hydrates and a scripted click that lands in that window does
+  nothing. Every helper that returns a page to the specs (`openSite`,
+  `reloadSite`, `visitSite`) waits for hydration by probing React's own
+  `__reactFiber$…`/`__reactProps$…` keys — the server HTML has none. Keep that
+  wait in front of any interaction added later.
 
 ## 11. Running a browser in this sandbox (no apt, no downloadable binaries)
 
@@ -298,3 +317,43 @@ This yields real WebGL through SwiftShader (`ANGLE … SwiftShader`), which is h
 the hero's light-spill halo was found and fixed — something no 2D compositor or
 headless DOM check can show.
 
+---
+
+## 12. Two interaction bugs found by this verification pass
+
+Both were found by testing the way a visitor would (real browser, real clicks),
+and both are fixed in the shipped code.
+
+**1. A dismissal before hydration was lost; SKIP did not work for the first ~2
+seconds.** The intro overlay is in the server HTML so the first paint is already
+the film — which also means its SKIP control is on screen before React attaches
+any handler (hydration measured at ~1.9s on this build). Clicking in that window
+threw the click away and the visitor watched the whole sequence anyway. The fix
+lives in the root layout's pre-paint script: native `click` / `keydown` /
+`wheel` / `touchstart` listeners on the document write the same
+`data-intro="skip"` attribute the CSS gate already understands, mark the session
+and remove themselves. Verified before hydration: at t = 393ms (no React props
+on the button yet) a click set the attribute, the overlay was `display:none` in
+the same tick, storage was marked, and the hero copy was released (opacity 1).
+
+**2. Anchor navigation was dead while a drawer held the scroll lock.** The
+mobile drawer closes on the same click that asks to scroll somewhere, and it
+holds the scroll lock until React re-renders without it. `scrollToId` used to
+run inside that window, where Lenis ignores `scrollTo` (stopped) and a locked
+document cannot scroll: on a narrow desktop window the drawer's "Menu" link left
+the page sitting at the top. `MotionProvider` now queues the request and performs
+it on the last lock release. Verified on both paths — Lenis at 390px wide (page
+lands with `#menu` 67px from the top) and native smooth scroll on mobile (same
+result).
+
+### What that pass verified (exact results)
+
+| Check | Result |
+| --- | --- |
+| `scripts/motion-check.mjs` — 1440×900, 1280×800, 1024×768, 786×714, 390×844, 360×800 | 0px horizontal overflow, no clipped headings, no stranded (invisible) content, 6-card favourites rail with the right behaviour per breakpoint (pinned at ≥1280, native `overflow-x: auto` at 786/390/360) |
+| Menu + preview safety at 1440 and 390 | search 19→1, empty state shown, reset back to 19, `POST /api/orders` → 403, no console errors beyond that expected probe |
+| Reduced motion (1440, 390) and `?no3d=1` (1440, 390) | same: 0px overflow, nothing stranded, no console errors |
+| Interaction fixes | pre-hydration SKIP releases in the same tick; drawer → `#menu` lands correctly on both the Lenis and native-scroll paths |
+| `npx playwright test --project=unit` | 27/27 passed |
+| `npx next build` | clean — 19 routes, `/` 231kB First Load JS, 103kB shared |
+| Playwright e2e (each test in its own invocation) | all specs pass individually; see the batching/wedge caveat above for why single-process runs do not |

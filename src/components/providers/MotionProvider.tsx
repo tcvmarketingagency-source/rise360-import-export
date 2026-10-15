@@ -46,11 +46,13 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     registerPlugins();
+    reducedMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const pointerQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
 
     const sync = () => {
+      reducedMotionRef.current = motionQuery.matches;
       setReducedMotion(motionQuery.matches);
       setIsDesktopPointer(pointerQuery.matches);
       setDevice(getDeviceProfile());
@@ -107,30 +109,61 @@ export function MotionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [ready, reducedMotion, isDesktopPointer]);
 
+  /**
+   * A scroll asked for while the page is locked.
+   *
+   * The mobile drawer closes on the same click that asks to scroll somewhere,
+   * and it holds the scroll lock until React has re-rendered without it. That
+   * window is fatal for the request: Lenis ignores `scrollTo` while it is
+   * stopped, and a locked document cannot scroll (reproduced on a narrow
+   * desktop window: the drawer's "Menu" link left the page at the top). So the
+   * request is queued and performed the moment the last lock is released.
+   */
+  const pendingScroll = useRef<{ target: HTMLElement; offset: number } | null>(null);
+  const reducedMotionRef = useRef(false);
+
+  const performScroll = useCallback((target: HTMLElement, offset: number) => {
+    const lenis = lenisRef.current;
+    if (lenis) {
+      lenis.scrollTo(target, { offset, duration: 1.15 });
+      return;
+    }
+    const top = target.getBoundingClientRect().top + window.scrollY + offset;
+    window.scrollTo({ top, behavior: reducedMotionRef.current ? "auto" : "smooth" });
+  }, []);
+
   const scrollToId = useCallback(
     (id: string) => {
       const target = document.getElementById(id.replace(/^#/, ""));
       if (!target) return;
       const offset = -Math.min(96, window.innerHeight * 0.08);
-      if (lenisRef.current) {
-        lenisRef.current.scrollTo(target, { offset, duration: 1.15 });
+      if (lockCount.current > 0) {
+        pendingScroll.current = { target, offset };
         return;
       }
-      const top = target.getBoundingClientRect().top + window.scrollY + offset;
-      window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
+      performScroll(target, offset);
     },
-    [reducedMotion],
+    [performScroll],
   );
 
-  const lockScroll = useCallback((locked: boolean) => {
-    lockCount.current = Math.max(0, lockCount.current + (locked ? 1 : -1));
-    const shouldLock = lockCount.current > 0;
-    if (lenisRef.current) {
-      if (shouldLock) lenisRef.current.stop();
-      else lenisRef.current.start();
-    }
-    document.documentElement.style.overflow = shouldLock ? "hidden" : "";
-  }, []);
+  const lockScroll = useCallback(
+    (locked: boolean) => {
+      lockCount.current = Math.max(0, lockCount.current + (locked ? 1 : -1));
+      const shouldLock = lockCount.current > 0;
+      if (lenisRef.current) {
+        if (shouldLock) lenisRef.current.stop();
+        else lenisRef.current.start();
+      }
+      document.documentElement.style.overflow = shouldLock ? "hidden" : "";
+      if (!shouldLock && pendingScroll.current) {
+        const { target, offset } = pendingScroll.current;
+        pendingScroll.current = null;
+        // Let the unlock land before the page starts moving.
+        window.requestAnimationFrame(() => performScroll(target, offset));
+      }
+    },
+    [performScroll],
+  );
 
   const value = useMemo<MotionContextValue>(
     () => ({ reducedMotion, ready, device, isDesktopPointer, scrollToId, lockScroll }),

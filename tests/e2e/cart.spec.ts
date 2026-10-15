@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { addFirstDishToCart, openSite, readCartCount } from "./helpers";
+import { addFirstDishToCart, openSite, readCartCount, reloadSite } from "./helpers";
 
 test.describe("Cart", () => {
   test.beforeEach(async ({ page }) => {
     await openSite(page);
     await page.evaluate(() => window.localStorage.removeItem("maitri.cart.v1"));
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await reloadSite(page);
   });
 
   test("empty cart explains what to do next", async ({ page }) => {
@@ -70,9 +70,11 @@ test.describe("Cart", () => {
 
   test("order survives a page reload", async ({ page }) => {
     await addFirstDishToCart(page);
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => window.localStorage.getItem("maitri.cart.v1") !== null);
-    expect(await readCartCount(page)).toBe(1);
+    // addFirstDishToCart already waited for the write to land.
+    await reloadSite(page);
+    // The cart is restored in an effect after hydration (deliberately, so the
+    // server HTML and the first render agree), so poll instead of sampling once.
+    await expect.poll(() => readCartCount(page)).toBe(1);
   });
 
   test("cart drawer traps focus, closes on Escape and restores it", async ({ page }) => {

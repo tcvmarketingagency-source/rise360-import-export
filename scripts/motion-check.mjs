@@ -1,29 +1,50 @@
 /**
- * Focused browser verification for the cinematic-animation work.
+ * Motion / composition check — one browser, one page, one viewport at a time.
  *
- * Runs ONE browser, ONE page at a time (this sandbox has 2 cores and software
- * WebGL, so Playwright's parallel workers get OOM-killed). For each viewport it
- * walks the page and asserts the things the specification actually cares about:
- * nothing stranded invisible, no overflow, no clipped headings, working
- * filters/cart, preview order safety, no console errors — plus screenshots.
+ * A deliberately low-resource companion to the Playwright suite: it can run
+ * where a full parallel test run cannot (a 2-core host, a bundled Chromium, or
+ * a container where Playwright's own browser download is unavailable). For each
+ * viewport it walks the page and reports:
  *
- * Usage: node .verify.mjs [viewports]
+ *   • elements still below 0.85 opacity after the page settles (stranded content)
+ *   • horizontal overflow and clipped headings
+ *   • favourites-rail behaviour at that width (pinned vs native snap)
+ *   • menu filtering, the empty state, reset and a cart round-trip
+ *   • the preview-mode order API status (must stay 403)
+ *   • console errors
+ * and writes screenshots alongside the report.
+ *
+ * Usage:
+ *   BASE_URL=http://127.0.0.1:3000 node scripts/motion-check.mjs 1440x900,390x844
+ *   REDUCED=1 ... node scripts/motion-check.mjs 390x844      # prefers-reduced-motion
+ *   NO3D=1    ... node scripts/motion-check.mjs 1440x900     # WebGL fallback path
+ *   OUT_DIR=/tmp/shots  SHOT=1                                # screenshots on
+ *
+ * Chromium: uses Playwright's own browser by default. Set CHROMIUM_PATH (and
+ * LD_LIBRARY_PATH if needed) to point at an external build — see HANDOFF.md §11.
  */
 import { chromium as playwrightChromium } from "playwright-core";
 import { writeFileSync, mkdirSync } from "node:fs";
-const chromium = (await import("/tmp/browser/node_modules/@sparticuz/chromium/build/index.js")).default;
+const externalChromium = process.env.CHROMIUM_PATH;
+const chromiumModule = externalChromium
+  ? null
+  : await import("/tmp/browser/node_modules/@sparticuz/chromium/build/index.js").catch(() => null);
 
-const OUT = "/tmp/browser/verify";
+const OUT = process.env.OUT_DIR ?? "/tmp/motion-check";
 mkdirSync(OUT, { recursive: true });
 const VIEWPORTS = (process.argv[2] ?? "1440x900,1280x800,1024x768,786x714,390x844,360x800")
   .split(",")
   .map((s) => s.split("x").map(Number));
 
+/**
+ * Launch with whatever Chromium this host has: `CHROMIUM_PATH` if set, otherwise
+ * the bundled build. `@sparticuz/chromium` is optional, so a missing module must
+ * not be dereferenced (that bug made the documented CHROMIUM_PATH usage crash).
+ */
 const browser = await playwrightChromium.launch({
-  executablePath: "/tmp/chromium",
-  args: [...chromium.args, "--disable-dev-shm-usage", "--js-flags=--max-old-space-size=1024"],
+  executablePath: externalChromium ?? undefined,
+  args: [...(chromiumModule?.args ?? []), "--no-sandbox", "--disable-dev-shm-usage", "--js-flags=--max-old-space-size=1024"],
   chromiumSandbox: false,
-  env: { ...process.env, LD_LIBRARY_PATH: "/tmp/nssroot/lib" },
 });
 
 const report = [];
@@ -41,7 +62,8 @@ for (const [W, H] of VIEWPORTS) {
   });
   page.on("pageerror", (e) => errors.push("PAGEERROR " + e.message.slice(0, 200)));
 
-  const url = process.env.NO3D === "1" ? "http://127.0.0.1:3000/?no3d=1" : "http://127.0.0.1:3000/";
+  const base = process.env.BASE_URL ?? "http://127.0.0.1:3000";
+  const url = process.env.NO3D === "1" ? `${base}/?no3d=1` : `${base}/`;
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });
 
   // Intro: skip it the way a visitor would (or let the safety release fire).
@@ -51,6 +73,7 @@ for (const [W, H] of VIEWPORTS) {
   await page.waitForTimeout(1500);
 
   const shot = async (name) => {
+    if (process.env.SHOT !== "1") return;
     const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
     writeFileSync(`${OUT}/${name}-${W}x${H}.png`, Buffer.from(data, "base64"));
   };
@@ -67,7 +90,9 @@ for (const [W, H] of VIEWPORTS) {
     window.scrollTo(0, document.body.scrollHeight);
     await new Promise((r) => setTimeout(r, 600));
   });
-  await page.waitForTimeout(1200);
+  // Software rendering stretches wall-clock time: a 0.9s entrance can take
+  // several seconds here, so give the page a quiet window before judging.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 5000)));
 
   // Anything still invisible after a full scroll would be a stranded element.
   const invisible = await page.evaluate(() =>

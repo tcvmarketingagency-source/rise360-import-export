@@ -14,6 +14,13 @@ import { INTRO_SESSION_KEY, emitIntroComplete, markIntroSeen } from "@/lib/intro
 const INTRO_MAX_MS = 6500;
 
 /**
+ * How long a *user dismissal* may take before the page is released regardless.
+ * The authored fade is 0.62s; this bounds it on machines where requestAnimation
+ * Frame cannot keep up, so "Skip" always feels immediate.
+ */
+const SKIP_RELEASE_MS = 900;
+
+/**
  * Cinematic introduction — rendered in the initial HTML so the first paint is
  * already the film, not a flash of the hero.
  *
@@ -61,23 +68,41 @@ export function IntroOverlay() {
     rootRef.current?.querySelector<HTMLButtonElement>("[data-testid='intro-skip']")?.focus();
   }, [ready, reducedMotion]);
 
+  const releasedRef = useRef(false);
+  const complete = () => {
+    // Idempotent: the fade, the wall-clock valve and a second skip can all race
+    // here, and emitting completion twice would replay the hero choreography.
+    if (releasedRef.current) return;
+    releasedRef.current = true;
+    setSuppressed(true);
+    setPlaying(false);
+    emitIntroComplete();
+  };
+
   const finish = (instant = false) => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     const root = rootRef.current;
-
-    const complete = () => {
-      setSuppressed(true);
-      setPlaying(false);
-      emitIntroComplete();
-    };
 
     if (instant || !root || !playing) {
       complete();
       return;
     }
 
-    gsap.to(root, { opacity: 0, duration: 0.62, ease: gsapEase.soft, onComplete: complete });
+    // Dismissing the intro must release the page *immediately* — a visitor is
+    // never held behind a fade. The fade is a courtesy on top; if the browser
+    // cannot run it (starved rAF on a slow device), the wall-clock fallback
+    // releases the page anyway.
+    const releaseTimer = window.setTimeout(complete, SKIP_RELEASE_MS);
+    gsap.to(root, {
+      opacity: 0,
+      duration: 0.62,
+      ease: gsapEase.soft,
+      onComplete: () => {
+        window.clearTimeout(releaseTimer);
+        complete();
+      },
+    });
   };
 
   /**

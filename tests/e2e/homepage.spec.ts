@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openSite, watchForProblems } from "./helpers";
+import { openSite, waitForHydration, watchForProblems } from "./helpers";
 
 test.describe("Homepage — structure, copy and navigation", () => {
   test("renders the hero, every story section and the footer", async ({ page }) => {
@@ -72,7 +72,14 @@ test.describe("Homepage — structure, copy and navigation", () => {
   test("keyboard navigation reaches the menu and the cart", async ({ page }) => {
     await openSite(page);
 
-    // Tab through the first interactive elements; the skip link comes first.
+    // Assert the tab order on a *returning* load. The intro was dismissed with
+    // a click above, and Chromium keeps the sequential focus starting point
+    // where the clicked (now unmounted) button was, so Tab would resume in the
+    // header instead of at the top of the document. A fresh load is the honest
+    // way to test "the skip link comes first".
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitForHydration(page);
+
     await page.keyboard.press("Tab");
     await expect(page.locator("a.skip-link")).toBeFocused();
 

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addFirstDishToCart, openSite } from "./helpers";
+import { addFirstDishToCart, openSite, reloadSite, visitSite } from "./helpers";
 
 /**
  * Mode A formatting, exercised through the real checkout UI.
@@ -16,12 +16,12 @@ test.describe("Order summary format (WhatsApp / call assisted)", () => {
   test.beforeEach(async ({ page }) => {
     await openSite(page);
     await page.evaluate(() => window.localStorage.removeItem("maitri.cart.v1"));
-    await page.reload({ waitUntil: "domcontentloaded" });
+    await reloadSite(page);
   });
 
   test("summary is complete, readable and honest about confirmation", async ({ page }) => {
     await addFirstDishToCart(page);
-    await page.goto("/checkout");
+    await visitSite(page, "/checkout");
     await page.locator("#field-customerName").fill("Anitha Rao");
     await page.locator("#field-phone").fill("9123456780");
     await page.locator("#field-address").fill("H.No 12-4-88, near Circus Grounds, Karimnagar");
@@ -59,7 +59,7 @@ test.describe("Order summary format (WhatsApp / call assisted)", () => {
 
   test("checkout copy never promises a delivery time, fee or discount", async ({ page }) => {
     await addFirstDishToCart(page);
-    await page.goto("/checkout");
+    await visitSite(page, "/checkout");
     const text = (await page.locator("body").innerText()).toLowerCase();
 
     expect(text).not.toMatch(/\b\d+\s*(min|mins|minutes)\b/);

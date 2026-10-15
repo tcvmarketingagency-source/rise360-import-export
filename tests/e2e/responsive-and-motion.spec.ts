@@ -63,7 +63,9 @@ test.describe("Responsive layout", () => {
     await page.getByTestId("nav-open").click();
     const nav = page.getByTestId("mobile-nav");
     await expect(nav).toBeVisible();
-    await nav.getByRole("link", { name: "Menu" }).click();
+    // The drawer holds two links to #menu (the list entry and the "Order from
+    // the menu" CTA), so target the list entry explicitly.
+    await nav.locator('a[href="#menu"]').first().click();
     await expect(nav).toBeHidden();
     await expect(page.locator("#menu")).toBeInViewport();
   });
@@ -123,8 +125,10 @@ test.describe("WebGL fallback", () => {
     await openSite(page, "/?no3d=1");
 
     await expect(page.getByTestId("hero-canvas")).toHaveCount(0);
-    // The photographic hero layer carries the first impression instead.
-    await expect(page.getByTestId("hero-poster")).toBeVisible();
+    // The photographic hero layers carry the first impression instead
+    // (`hero-poster` became the backdrop + dish panel in the hero rebuild).
+    await expect(page.getByTestId("hero-backdrop")).toBeVisible();
+    await expect(page.getByTestId("hero-dish-fallback")).toBeVisible();
     await expect(page.getByTestId("hero-cta-menu")).toBeVisible();
     await expect(page.getByTestId("hero-cta-call")).toBeVisible();
 
