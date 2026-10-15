@@ -15,22 +15,35 @@ import { openSite } from "./helpers";
  * assertion is only meaningful once the page has gone quiet.
  */
 
-/** Waits until the page has stopped changing opacity for a moment. */
-async function settle(page: import("@playwright/test").Page, quietMs = 900) {
-  await page.evaluate(async (quiet) => {
-    let last = -1;
-    let stableFor = 0;
-    const step = 150;
-    while (stableFor < quiet && stableFor < 12_000) {
-      await new Promise((resolve) => setTimeout(resolve, step));
-      const nodes = document.querySelectorAll<HTMLElement>("[data-beat],[data-card-line],[data-menu-card],[data-image-reveal]");
-      let sum = 0;
-      for (const node of nodes) sum += Number.parseFloat(getComputedStyle(node).opacity) || 0;
-      if (Math.abs(sum - last) < 0.001) stableFor += step;
-      else stableFor = 0;
-      last = sum;
-    }
-  }, quietMs);
+/**
+ * Waits until the page has stopped changing opacity for a moment.
+ *
+ * The watched set is exactly the set the acceptance sweep judges: a narrower set
+ * reported "quiet" while a section that was not in it was still entering, which
+ * made the sweep read mid-flight opacities. A genuinely stranded element holds a
+ * constant opacity, so it still contributes no change here and is still caught
+ * by the assertion.
+ */
+async function settle(page: import("@playwright/test").Page, quietMs = 1_500, selector?: string) {
+  await page.evaluate(
+    async ({ quiet, sel }) => {
+      let last = -1;
+      let stableFor = 0;
+      const step = 150;
+      while (stableFor < quiet && stableFor < 15_000) {
+        await new Promise((resolve) => setTimeout(resolve, step));
+        const nodes = document.querySelectorAll<HTMLElement>(
+          sel ?? "[data-beat],[data-card-line],[data-menu-card],[data-image-reveal]",
+        );
+        let sum = 0;
+        for (const node of nodes) sum += Number.parseFloat(getComputedStyle(node).opacity) || 0;
+        if (Math.abs(sum - last) < 0.001) stableFor += step;
+        else stableFor = 0;
+        last = sum;
+      }
+    },
+    { quiet: quietMs, sel: selector },
+  );
 }
 
 const ANIMATED = [
@@ -61,7 +74,7 @@ test.describe("Cinematic motion", () => {
         await new Promise((resolve) => setTimeout(resolve, 120));
       }
     });
-    await settle(page);
+    await settle(page, 1_500, ANIMATED);
 
     const stranded = await page.evaluate((selector) => {
       return Array.from(document.querySelectorAll<HTMLElement>(selector))
