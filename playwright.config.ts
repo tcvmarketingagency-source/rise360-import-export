@@ -12,6 +12,16 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 const useExistingServer = Boolean(process.env.E2E_BASE_URL);
 
+/**
+ * Optional out-of-tree Chromium.
+ *
+ * CI images usually have no browser binaries; `E2E_CHROMIUM_PATH` plus
+ * `LD_LIBRARY_PATH` (see HANDOFF.md §10) points the suite at a bundled build
+ * instead. Unset — the normal case, and the only case for contributors — means
+ * Playwright manages its own browser exactly as before.
+ */
+const chromiumPath = process.env.E2E_CHROMIUM_PATH;
+
 export default defineConfig({
   testDir: "./tests",
   // Unit tests import server-guarded modules; this tsconfig aliases the
@@ -33,6 +43,17 @@ export default defineConfig({
     // Motion preference is a context option in Playwright; the reduced-motion
     // profile below overrides it.
     contextOptions: { reducedMotion: "no-preference" },
+    ...(chromiumPath
+      ? {
+          launchOptions: {
+            executablePath: chromiumPath,
+            chromiumSandbox: false,
+            // The bundled build needs a single process on constrained hosts and
+            // software WebGL, which is what the site's WebGL paths are tested on.
+            args: ["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+          },
+        }
+      : {}),
   },
 
   projects: [

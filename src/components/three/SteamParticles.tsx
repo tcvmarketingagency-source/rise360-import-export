@@ -21,6 +21,7 @@ const vertexShader = /* glsl */ `
   uniform float uSpread;
   uniform float uPixelRatio;
   uniform float uScale;
+  uniform float uMaxSize;
   uniform float uSway;
 
   varying float vLife;
@@ -37,8 +38,12 @@ const vertexShader = /* glsl */ `
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
 
     // Grow as they rise, then fade out at the top of the column.
-    float growth = 1.0 + life * 2.6;
-    gl_PointSize = aSize * growth * uPixelRatio * (uScale / max(0.001, -mvPosition.z));
+    float growth = 1.0 + life * 2.0;
+    float size = aSize * growth * uPixelRatio * (uScale / max(0.001, -mvPosition.z));
+    // Hard cap. Without it a single sprite can span the whole viewport — with
+    // additive blending that turns the particle field into a full-screen glow
+    // (confirmed in a real capture: 44 "motes" were rendering at ~1000px each).
+    gl_PointSize = min(size, uMaxSize * uPixelRatio);
     gl_Position = projectionMatrix * mvPosition;
 
     vLife = life;
@@ -79,6 +84,10 @@ export interface SteamParticlesProps {
   color?: string;
   pixelRatio?: number;
   kind?: "steam" | "mote";
+  /** Perspective size factor: larger = bigger sprites at the same depth. */
+  scale?: number;
+  /** Ceiling for one sprite, in CSS pixels. */
+  maxSize?: number;
 }
 
 export function SteamParticles({
@@ -94,6 +103,8 @@ export function SteamParticles({
   color = "#f4e8d6",
   pixelRatio = 1,
   kind = "steam",
+  scale = 320,
+  maxSize = 220,
 }: SteamParticlesProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
@@ -131,13 +142,14 @@ export function SteamParticles({
       uRise: { value: rise },
       uSpread: { value: spread },
       uPixelRatio: { value: pixelRatio },
-      uScale: { value: 320 },
+      uScale: { value: scale },
+      uMaxSize: { value: maxSize },
       uSway: { value: sway },
       uTexture: { value: texture },
       uColor: { value: new THREE.Color(color) },
       uOpacity: { value: opacity },
     }),
-    [rise, spread, pixelRatio, sway, texture, color, opacity],
+    [rise, spread, pixelRatio, sway, texture, color, opacity, scale, maxSize],
   );
 
   useFrame((_, delta) => {

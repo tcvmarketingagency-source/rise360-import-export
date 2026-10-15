@@ -138,9 +138,14 @@ function ProceduralEnvironment({ quality }: { quality: DeviceProfile }) {
         <sphereGeometry args={[1, 12, 12]} />
         <meshBasicMaterial color="#191009" side={THREE.BackSide} />
       </mesh>
-      <mesh position={[3.4, 3.1, 2.2]} rotation={[0, -0.7, 0]}>
-        <planeGeometry args={[3.2, 2.2]} />
-        <meshBasicMaterial color="#6d4522" />
+      {/*
+        One warm strip, placed above and slightly *behind* the subject: it shapes
+        the food and the ceramic rim without lighting the camera-side tabletop
+        (a strip on the camera side was the second half of the halo).
+      */}
+      <mesh position={[2.7, 3.3, -1.3]} rotation={[0, -0.4, 0]}>
+        <planeGeometry args={[2.6, 1.5]} />
+        <meshBasicMaterial color="#3a2412" />
       </mesh>
       <mesh position={[-3.2, 1.4, -1.6]} rotation={[0, 0.6, 0]}>
         <planeGeometry args={[3.4, 2.6]} />
@@ -237,18 +242,6 @@ function DishPanel({
         />
       </mesh>
 
-      {/* Warm pool of light under the subject (additive, very low) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[transform.center[0], -0.89, transform.center[2] + 0.2]}>
-        <planeGeometry args={[HERO_MATERIALS.glow.size, HERO_MATERIALS.glow.size]} />
-        <meshBasicMaterial
-          color={HERO_MATERIALS.glow.color}
-          transparent
-          opacity={HERO_MATERIALS.glow.opacity}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-
       <group ref={groupRef}>
         <group position={transform.center} quaternion={quaternion}>
           <mesh renderOrder={1}>
@@ -270,9 +263,11 @@ function DishPanel({
         rise={1.9}
         spread={0.4}
         sway={0.16}
-        size={quality === "low" ? 26 : 34}
+        size={quality === "low" ? 18 : 24}
         speed={0.045}
         opacity={HERO_MOTION.steamOpacity}
+        scale={26}
+        maxSize={190}
         color="#f6ead6"
       />
 
@@ -281,14 +276,17 @@ function DishPanel({
         kind="mote"
         count={HERO_MOTION.moteCount[quality]}
         position={[transform.center[0], transform.center[1] - 0.4, transform.center[2] + 0.5]}
-        radius={Math.max(0.6, transform.worldWidth * 0.7)}
-        rise={1.4}
-        spread={0.8}
-        sway={0.4}
-        size={quality === "low" ? 10 : 14}
+        radius={Math.max(0.4, transform.worldWidth * 0.42)}
+        rise={1.2}
+        spread={0.7}
+        sway={0.35}
+        size={quality === "low" ? 6 : 9}
         speed={0.07}
         opacity={HERO_MOTION.moteOpacity}
         color="#ffca86"
+        // Small, sparse and *not* wide: these are depth cues, not a light source.
+        scale={16}
+        maxSize={54}
       />
     </group>
   );
@@ -307,10 +305,12 @@ function Atmosphere({ quality }: { quality: DeviceProfile }) {
         rise={2.4}
         spread={0.8}
         sway={0.35}
-        size={44}
+        size={24}
         speed={0.045}
         opacity={0.16}
         color="#f6ead6"
+        scale={26}
+        maxSize={190}
       />
       <SteamParticles
         kind="mote"
@@ -320,10 +320,12 @@ function Atmosphere({ quality }: { quality: DeviceProfile }) {
         rise={2.2}
         spread={1.1}
         sway={0.5}
-        size={14}
+        size={9}
         speed={0.08}
-        opacity={0.45}
+        opacity={0.3}
         color="#ffca86"
+        scale={16}
+        maxSize={54}
       />
     </group>
   );

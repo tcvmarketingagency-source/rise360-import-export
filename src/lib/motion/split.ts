@@ -49,7 +49,10 @@ export function splitHeadline(element: HTMLElement): SplitResult | null {
 
       const wordInner = document.createElement("span");
       wordInner.style.display = "inline-block";
-      wordInner.style.willChange = "transform, opacity";
+      // Deliberately no persistent `will-change`: a headline can contain 40+
+      // words, and promoting them all for the lifetime of the page is exactly
+      // the kind of blanket hint that costs more than it saves. GSAP promotes
+      // what it animates and releases it again.
       wordInner.textContent = word;
 
       wordOuter.appendChild(wordInner);

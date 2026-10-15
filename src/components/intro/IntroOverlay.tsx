@@ -7,6 +7,13 @@ import { gsapEase } from "@/lib/motion/tokens";
 import { INTRO_SESSION_KEY, emitIntroComplete, markIntroSeen } from "@/lib/intro";
 
 /**
+ * Wall-clock ceiling for the introduction. The authored timeline runs ~5s
+ * (shorter on phones); this is the point at which the page is released no
+ * matter how the device is performing.
+ */
+const INTRO_MAX_MS = 6500;
+
+/**
  * Cinematic introduction — rendered in the initial HTML so the first paint is
  * already the film, not a flash of the hero.
  *
@@ -72,6 +79,22 @@ export function IntroOverlay() {
 
     gsap.to(root, { opacity: 0, duration: 0.62, ease: gsapEase.soft, onComplete: complete });
   };
+
+  /**
+   * Hard release valve.
+   *
+   * The choreography is driven by requestAnimationFrame, so on a starved or
+   * software-rendered device a "0.62s" fade can take seconds of wall-clock
+   * time. A visitor must never be held behind that: if the timeline has not
+   * released the page after INTRO_MAX_MS, finish() runs regardless. This is a
+   * wall-clock guarantee, not a second animation.
+   */
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setTimeout(() => finish(true), INTRO_MAX_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing]);
 
   // Dismissal: a visitor is never trapped behind the animation.
   useEffect(() => {

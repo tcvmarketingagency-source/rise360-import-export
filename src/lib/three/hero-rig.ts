@@ -276,11 +276,22 @@ export const HERO_LIGHTS = {
   hemisphere: { intensity: 0.06, sky: "#ffd0a0", ground: "#0b0705" },
   /** The moving key light. Intensity is in candela with decay 2. */
   key: {
-    intensity: 9,
-    intensityPulse: 0.6,
-    angle: 0.5,
+    intensity: 5,
+    intensityPulse: 0.4,
+    /**
+     * Narrow cone, short range: the pool of light has to land on the dish, not
+     * on the tabletop around it. A wide cone with no falloff-distance lit a
+     * bright ring immediately outside the panel (visible in a real capture).
+     */
+    angle: 0.3,
     penumbra: 1,
-    distance: 10,
+    /**
+     * Finite range. With no `distance`, a spot with decay 2 still reaches the
+     * camera-side tabletop and, because the room shell is a closed sphere lit
+     * from inside, it lit a bright ring around the food (confirmed in a real
+     * WebGL capture before this change).
+     */
+    distance: 4,
     decay: 2,
     color: "#ffc98d",
     radius: 2.6,
@@ -289,9 +300,13 @@ export const HERO_LIGHTS = {
     angularSpeed: 0.12,
   },
   /** Cold-ish dark rim so the food edge separates from the background. */
-  rim: { intensity: 0.16, color: "#8c5a2c", position: [-3.1, 2.1, -2.4] as const },
-  /** Subtle warm bounce under the panel. */
-  fill: { intensity: 0.5, distance: 3.4, decay: 2, color: "#ffb469", position: [0, 0.1, 0.8] as const },
+  rim: { intensity: 0.12, color: "#8c5a2c", position: [-3.1, 2.1, -2.4] as const },
+  /**
+   * Warm bounce. Deliberately *behind* the subject (negative z, further from
+   * the camera than the panel): a fill sitting between the camera and the
+   * panel lit the near tabletop into a visible halo.
+   */
+  fill: { intensity: 0.34, distance: 2.8, decay: 2, color: "#ffb469", position: [0, -0.1, -0.6] as const },
   /** ACES exposure. Below 1: the frame is lit, not flooded. */
   exposure: 0.86,
   /** How strongly materials read the environment. */
@@ -302,9 +317,19 @@ export const HERO_LIGHTS = {
 
 export const HERO_MATERIALS = {
   /** Dark, tactile tabletop — stone, not a cream backdrop. */
-  table: { color: "#241a14", roughness: 0.92, metalness: 0.02 },
-  /** Warm pool of light the panel sits in, drawn additively on the table. */
-  glow: { color: "#ff9c4a", opacity: 0.16, size: 5.4 },
+  /**
+   * Near-black stone. Deliberately dark enough that the key light's pool on the
+   * tabletop cannot compete with the dish — the previous value (#241a14) lit a
+   * visible ring around the panel in a real WebGL capture.
+   */
+  table: { color: "#120c09", roughness: 0.95, metalness: 0.02 },
+  /**
+   * No additive glow plane. Every attempt at a soft pool on the tabletop read
+   * as a ring around the food once the frame was actually rendered (the plane
+   * has hard edges and the table underneath is lit by the key light anyway).
+   * The dish is the only bright object in the frame; the table stays dark.
+   */
+  glow: null as null | { color: string; opacity: number; size: number; fadeRadius: number },
   panel: { featherInner: 0.6, featherOuter: 1.0, sheen: 0.1, vignette: 0.34 },
 } as const;
 
@@ -330,8 +355,8 @@ export const HERO_MOTION = {
   cameraScrollDolly: 0.65,
   steamOpacity: 0.2,
   steamCount: { low: 34, mid: 66, high: 104 },
-  moteOpacity: 0.42,
-  moteCount: { low: 22, mid: 44, high: 80 },
+  moteOpacity: 0.24,
+  moteCount: { low: 16, mid: 30, high: 48 },
 } as const;
 
 /** Card/panel entrance when the hero copy is released after the intro. */

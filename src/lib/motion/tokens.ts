@@ -47,6 +47,49 @@ export const transition = {
   card: { duration: 0.5, ease: bezier.cinematic },
 } as const;
 
+/**
+ * Reveal distances (px). One scale for the whole site, so sections differ by
+ * *rhythm* rather than by arbitrary offsets.
+ */
+export const revealDistance = {
+  micro: 14,
+  text: 22,
+  card: 30,
+  panel: 44,
+} as const;
+
+/**
+ * Image reveals settle from a restrained scale offset — the specified 1.04–1.08
+ * band. `clipFrom` is the closed state of the curtain; it always animates to
+ * `imageReveal.open`.
+ */
+export const imageReveal = {
+  scaleFrom: 1.06,
+  clipFrom: {
+    /** Curtain rises: the frame is revealed top-down. */
+    rise: "inset(0% 0% 100% 0%)",
+    /** Curtain draws: the frame is revealed left-to-right. */
+    draw: "inset(0% 100% 0% 0%)",
+  },
+  open: "inset(0% 0% 0% 0%)",
+} as const;
+
+/**
+ * Beat offsets (seconds, relative to a section's own timeline start). Every
+ * section uses these names, so the page reads as one choreography even though
+ * each section phrases its motion differently.
+ */
+export const beat = {
+  eyebrow: 0,
+  headline: 0.1,
+  support: 0.34,
+  furniture: 0.5,
+  cta: 0.62,
+  /** Secondary action — deliberately a separate beat from the primary one. */
+  ctaSecondary: 0.74,
+  last: 0.95,
+} as const;
+
 /** Stagger values keep text sequencing deliberate rather than busy. */
 export const stagger = {
   tight: 0.03,
@@ -62,6 +105,12 @@ export const scrollDefaults = {
   pinStart: "top top",
   scrubSmooth: 0.8,
   markers: false,
+  /**
+   * ScrollTrigger.refresh() re-measures every trigger on the page. All
+   * refreshes funnel through one debounced scheduler, so a page with eight
+   * animated sections still refreshes once instead of once per component.
+   */
+  refreshDebounce: 180,
 } as const;
 
 /** Reduced-motion users get the same content with no motion at all. */

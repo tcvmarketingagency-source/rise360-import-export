@@ -9,7 +9,10 @@ import { useCart } from "@/components/cart/CartProvider";
 import { filterMenuItems, getCategoryFacets, getMenuItems } from "@/lib/menu";
 import { defaultSelection } from "@/lib/cart/line";
 import { menuSectionCopy } from "@/lib/content/site";
-import { bezier } from "@/lib/motion/tokens";
+import { bezier, gsapEase, imageReveal, revealDistance, stagger } from "@/lib/motion/tokens";
+import { gsap, ScrollTrigger } from "@/components/providers/MotionProvider";
+import { refreshScrollTriggers, useIsomorphicLayoutEffect } from "@/lib/motion/gsap";
+import { useMotion } from "@/components/providers/MotionProvider";
 import type { DietaryKind, MenuItem } from "@/lib/menu/types";
 
 const dietFilters: { id: DietaryKind | "all"; label: string }[] = [
@@ -27,6 +30,78 @@ export function MenuExplorer() {
   const [activeItem, setActiveItem] = useState<MenuItem | null>(null);
   const { addItem } = useCart();
   const searchRef = useRef<HTMLInputElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const { ready, reducedMotion } = useMotion();
+
+  /**
+   * Menu discovery animation. GSAP owns the *entrance* of the cards (curtain on
+   * the frame, then the body lines), Framer owns everything after that — the
+   * presence swap when the result set changes. Initial states are written here,
+   * never in CSS or in the server HTML, so the grid is visible even if
+   * JavaScript never runs.
+   */
+  useIsomorphicLayoutEffect(() => {
+    const root = gridRef.current;
+    if (!root || !ready || reducedMotion) return;
+
+    const context = gsap.context(() => {
+      const cards = gsap.utils.toArray<HTMLElement>("[data-menu-card]", root);
+      if (cards.length === 0) return;
+
+      for (const card of cards) {
+        const frame = card.querySelector<HTMLElement>("[data-card-image]");
+        const image = frame?.querySelector<HTMLElement>("img") ?? null;
+        const lines = gsap.utils.toArray<HTMLElement>("[data-card-line]", card);
+        gsap.set(card, { opacity: 0, y: revealDistance.card });
+        if (frame) {
+          gsap.set(frame, { clipPath: imageReveal.clipFrom.rise, webkitClipPath: imageReveal.clipFrom.rise });
+        }
+        if (image) gsap.set(image, { scale: 1.04 });
+        gsap.set(lines, { opacity: 0, y: 8 });
+      }
+
+      // `batch` gives us the cards that entered together, so the stagger reads
+      // as a row-by-row wave rather than a single block appearing at once.
+      ScrollTrigger.batch(cards, {
+        start: "top 92%",
+        once: true,
+        onEnter: (batch) => {
+          batch.forEach((element, index) => {
+            const card = element as HTMLElement;
+            const frame = card.querySelector<HTMLElement>("[data-card-image]");
+            const image = frame?.querySelector<HTMLElement>("img") ?? null;
+            const lines = gsap.utils.toArray<HTMLElement>("[data-card-line]", card);
+
+            const timeline = gsap.timeline({
+              delay: index * stagger.card,
+              defaults: { ease: gsapEase.cinematic },
+            });
+
+            timeline.to(card, { opacity: 1, y: 0, duration: 0.7, clearProps: "transform" }, 0);
+            if (frame) {
+              timeline.to(
+                frame,
+                { clipPath: imageReveal.open, webkitClipPath: imageReveal.open, duration: 0.95 },
+                0.05,
+              );
+            }
+            if (image) {
+              timeline.to(image, { scale: 1, duration: 1.2, ease: "power3.out", clearProps: "scale" }, 0.05);
+            }
+            // Details settle after the frame has established its focal point.
+            timeline.to(
+              lines,
+              { opacity: 1, y: 0, duration: 0.55, stagger: stagger.tight, clearProps: "transform" },
+              0.34,
+            );
+          });
+        },
+      });
+    }, root);
+
+    refreshScrollTriggers();
+    return () => context.revert();
+  }, [ready, reducedMotion]);
 
   const results = useMemo(
     () => filterMenuItems(items, { search, categoryId, dietary }),
@@ -46,9 +121,10 @@ export function MenuExplorer() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div ref={gridRef} className="flex flex-col gap-8">
       {/* ── Filter bar: sticky under the header, never hiding the grid ────── */}
       <div
+        data-beat="furniture"
         className="sticky top-[71px] z-40 -mx-[clamp(1rem,4.5vw,4.5rem)] border-y border-ivory/10 bg-ink/88 px-[clamp(1rem,4.5vw,4.5rem)] py-3 backdrop-blur-md"
         data-testid="menu-filters"
       >
@@ -167,7 +243,10 @@ export function MenuExplorer() {
       </div>
 
       {/* ── Results ───────────────────────────────────────────────────────── */}
-      <AnimatePresence mode="popLayout">
+      {/* `initial={false}`: cards that exist at first paint are never given an
+          inline opacity:0 (Framer would otherwise hide them in the server HTML);
+          items mounted by a filter change still animate in. */}
+      <AnimatePresence mode="popLayout" initial={false}>
         {results.length === 0 ? (
           <motion.div
             key="empty"
@@ -197,7 +276,15 @@ export function MenuExplorer() {
             data-testid="menu-grid"
           >
             {results.map((item, index) => (
-              <li key={item.id} className="h-full">
+              <motion.li
+                key={item.id}
+                layout="position"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.32, ease: bezier.cinematic }}
+                className="h-full scroll-mt-[9.5rem]"
+              >
                 <MenuCard
                   item={item}
                   index={index}
@@ -205,7 +292,7 @@ export function MenuExplorer() {
                   onQuickAdd={quickAdd}
                   priority={index < 3}
                 />
-              </li>
+              </motion.li>
             ))}
           </motion.ul>
         )}

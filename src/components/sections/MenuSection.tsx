@@ -3,11 +3,12 @@
 import { MenuExplorer } from "@/components/menu/MenuExplorer";
 import { MicroLabel } from "@/components/ui/Bits";
 import { menuSectionCopy } from "@/lib/content/site";
-import { useHeadlineReveal, useSectionReveal } from "@/lib/motion/gsap";
+import { useSectionEntrance } from "@/lib/motion/gsap";
 
 export function MenuSection() {
-  const rootRef = useSectionReveal<HTMLElement>();
-  const headlineRef = useHeadlineReveal<HTMLDivElement>();
+  // Entrance beats: micro → headline (masked words) → support → the filter bar
+  // and grid, which settle on the furniture beat.
+  const rootRef = useSectionEntrance<HTMLElement>();
 
   return (
     <section
@@ -17,18 +18,20 @@ export function MenuSection() {
       aria-labelledby="menu-heading"
     >
       <div className="shell flex flex-col gap-10">
-        <div ref={headlineRef} className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-end">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-end">
           <div className="flex flex-col gap-5">
-            <MicroLabel tone="amber">{menuSectionCopy.micro}</MicroLabel>
+            <MicroLabel tone="amber" data-beat="eyebrow">
+              {menuSectionCopy.micro}
+            </MicroLabel>
             <h2
               id="menu-heading"
-              data-split="true"
+              data-beat="headline"
               className="text-[length:var(--text-display-sm)] leading-[0.98] text-ivory"
             >
               {menuSectionCopy.headline}
             </h2>
           </div>
-          <p data-reveal className="max-w-lg text-[0.95rem] leading-relaxed text-ash">
+          <p data-beat="support" className="max-w-lg text-[0.95rem] leading-relaxed text-ash">
             {menuSectionCopy.support}
           </p>
         </div>

@@ -8,11 +8,12 @@ export function MicroLabel({
   children,
   className = "",
   tone = "ash",
+  ...rest
 }: {
   children: React.ReactNode;
   className?: string;
   tone?: "ash" | "amber" | "ivory" | "chili";
-}) {
+} & React.HTMLAttributes<HTMLSpanElement>) {
   const tones = {
     ash: "text-ash",
     amber: "text-amber",
@@ -20,7 +21,9 @@ export function MicroLabel({
     chili: "text-chili",
   } as const;
   return (
-    <span className={`micro ${tones[tone]} ${className}`.trim()}>{children}</span>
+    <span className={`micro ${tones[tone]} ${className}`.trim()} {...rest}>
+      {children}
+    </span>
   );
 }
 

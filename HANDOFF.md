@@ -221,3 +221,80 @@ CSS agreement within 2px); the lighting/material appearance needs one visual
 pass in a real browser. Do not run `next build` while `next dev` is running —
 both use `.next`, and the production build corrupts the dev server's client
 manifest (chunk 404s, "React Client Manifest" errors).
+
+## 10. Site-wide motion system (owners, hooks, how to extend)
+
+One library owns one property, everywhere. The audit that produced this split
+found the site animating the *same* CSS transform from three different systems
+(Framer `whileInView` on cards, GSAP `data-reveal` on their wrappers, and CSS
+transitions on hover) — which is why reveals felt uneven.
+
+| Owner | Animates | Where the code lives |
+| --- | --- | --- |
+| GSAP + ScrollTrigger | scroll-linked timelines, section entrances, image curtains, rule/line draws, the favourites rail, sequencing | `src/lib/motion/gsap.ts` |
+| React Three Fiber | hero scene: camera, materials, steam, spice motes, light | `src/components/three/HeroScene.tsx`, `SteamParticles.tsx` |
+| Framer Motion | UI *state*: menu filter swaps, cart lines, dialogs/drawers, dialogs' badges | `MenuExplorer`, `OrderProcessSection`, `CartDrawer`, `ItemDialog` |
+| CSS | hover/focus/press, the link underline draws, static layout, reduced-motion fallbacks | component class names, `globals.css` |
+
+### The hooks
+
+- `useSectionEntrance({ start, delay, beats })` — a section's choreography:
+  eyebrow → headline (masked words) → support → furniture → CTA (secondary CTA)
+  → closing line. Beats are markup-driven (`data-beat="support"`), so a section
+  omits a beat without shifting the others. Beat offsets live in
+  `beat` in `src/lib/motion/tokens.ts`.
+- `useImageReveal({ direction, scrub })` — clip-path curtain on the *frame* plus
+  a 1.04–1.08 scale settle on the *image*. Two elements, two properties, never
+  two owners.
+- `useLineDraw({ axis, scrub })` — draws `[data-line-draw]` rules.
+- `useScrubTimeline(build, opts)` — a section-authored scrubbed timeline with
+  `invalidateOnRefresh` and `gsap.context` cleanup.
+- `useSectionReveal` / `useHeadlineReveal` — the original reveal system, kept for
+  sections that need no choreography.
+
+### The rules this codebase now enforces
+
+1. **Nothing is hidden in CSS or in server HTML.** Initial states are set by GSAP
+   at the moment it registers the trigger, so a JS failure cannot strand a
+   section at `opacity: 0`. Framer components that animate on mount use
+   `initial={false}` (see `MenuExplorer`) for exactly this reason.
+2. **One refresh.** `ScrollTrigger.refresh()` is funnelled through
+   `refreshScrollTriggers()` (debounced). Don't call it per component.
+3. **Everything is scoped and reverted.** `gsap.context()` + `split.revert()` on
+   unmount; persistent tweens are killed. Mount/unmount/remount must be clean.
+4. **No blanket `will-change`.** GSAP promotes what it animates and releases it.
+5. **Reduced motion short-circuits every hook** — content is simply present, and
+   `MotionConfig reducedMotion="user"` covers Framer.
+
+### Verifying motion in a browser
+
+`E2E_CHROMIUM_PATH=/tmp/chromium LD_LIBRARY_PATH=/tmp/nssroot/lib npm run test:e2e`
+runs Playwright against a bundled Chromium with software WebGL (see §11). Two
+caveats are worth knowing before you read a failure:
+
+- **Software rendering stretches wall-clock time.** A 0.9s entrance can take
+  several seconds, so "element is not yet visible" right after a scroll is
+  usually mid-flight, not stranded. Wait for the console/page to settle before
+  concluding anything.
+- **Playwright's parallel workers get OOM-killed on a 2-core host.** Use
+  `--workers=1` there; the intro's wall-clock release valve
+  (`INTRO_MAX_MS` in `IntroOverlay.tsx`) exists for the same class of device.
+
+## 11. Running a browser in this sandbox (no apt, no downloadable binaries)
+
+`npx playwright install` cannot download here, and Debian's repositories are not
+reachable, so the verification browser is assembled from what *is*:
+
+1. `npm i @sparticuz/chromium` (npm) → bundles a Chromium binary; extract with
+   `chromium.executablePath()` (lands at `/tmp/chromium`).
+2. That binary needs `libnspr4.so`, `libnss3.so`, `libnssutil3.so`. Neither apt
+   nor PyPI nor npm ships them, so they are **built from source**: clone
+   `mozilla/nspr` + `mozilla/nss` (github.com is reachable) and run
+   `nss/build.sh -o --opt --disable-tests`. Its `dist/Release/lib` then provides
+   all needed `.so` files (see `/tmp/browser/build-nss2.sh`).
+3. Point Playwright at both via `E2E_CHROMIUM_PATH` and `LD_LIBRARY_PATH`.
+
+This yields real WebGL through SwiftShader (`ANGLE … SwiftShader`), which is how
+the hero's light-spill halo was found and fixed — something no 2D compositor or
+headless DOM check can show.
+
